@@ -30,5 +30,10 @@ export const remindersApi = {
   ): Promise<{ message: string; reminder: DeliveryReminder }> => {
     return api.patch(`/reminders/${id}/respond`, data);
   },
+
+  // 删除催货记录
+  deleteReminder: (id: number): Promise<{ message: string }> => {
+    return api.delete(`/reminders/${id}`);
+  },
 };
 

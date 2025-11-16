@@ -5,9 +5,12 @@ import {
   createOrder,
   updateOrder,
   completeOrder,
+  deleteOrder,
   updateCustomerOrderNumber,
   getOrderStatusHistory,
   getCustomers,
+  getProductionManagers,
+  assignOrderToProductionManager,
 } from '../controllers/orderController.js';
 import {
   authenticateToken,
@@ -26,6 +29,9 @@ router.get('/', getOrders);
 // 获取所有客户列表（仅管理员）- 必须在 /:id 之前
 router.get('/customers/list', requireAdmin, getCustomers);
 
+// 获取所有生产跟单列表（仅管理员）
+router.get('/production-managers/list', requireAdmin, getProductionManagers);
+
 // 获取订单状态历史
 router.get('/:id/history', getOrderStatusHistory);
 
@@ -40,6 +46,8 @@ router.patch(
 router.post('/', requireAdmin, createOrder);
 router.put('/:id', requireAdmin, updateOrder);
 router.patch('/:id/complete', requireAdmin, completeOrder);
+router.post('/:id/assign', requireAdmin, assignOrderToProductionManager);
+router.delete('/:id', requireAdmin, deleteOrder);
 
 // 获取订单详情（必须在最后，避免匹配到其他路由）
 router.get('/:id', getOrderById);

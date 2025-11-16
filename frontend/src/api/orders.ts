@@ -4,6 +4,8 @@ import { Order, OrdersResponse, OrderStatusHistory } from '../types';
 interface OrderQueryParams {
   page?: number;
   pageSize?: number;
+  order_number?: string;
+  customer_order_number?: string;
   status?: string;
   is_completed?: boolean;
   can_ship?: boolean;
@@ -55,6 +57,24 @@ export const ordersApi = {
   // 获取客户列表（仅管理员）
   getCustomers: (): Promise<{ customers: any[] }> => {
     return api.get('/orders/customers/list');
+  },
+
+  // 获取生产跟单列表（仅管理员）
+  getProductionManagers: (): Promise<{ productionManagers: any[] }> => {
+    return api.get('/orders/production-managers/list');
+  },
+
+  // 分配订单给生产跟单（仅管理员）
+  assignOrder: (
+    id: number,
+    assigned_to?: number
+  ): Promise<{ message: string; order: Order }> => {
+    return api.post(`/orders/${id}/assign`, { assigned_to });
+  },
+
+  // 删除订单（仅管理员）
+  deleteOrder: (id: number): Promise<{ message: string }> => {
+    return api.delete(`/orders/${id}`);
   },
 };
 

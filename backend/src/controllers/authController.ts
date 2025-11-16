@@ -59,10 +59,29 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
 
-    const result = await pool.query(
-      'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, created_at, updated_at FROM users WHERE id = $1',
-      [userId]
-    );
+    // 先检查字段是否存在，如果不存在就使用旧的查询
+    let result;
+    try {
+      result = await pool.query(
+        'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, assigned_order_types, admin_notes, created_at, updated_at FROM users WHERE id = $1',
+        [userId]
+      );
+    } catch (error: any) {
+      // 如果字段不存在，使用旧的查询（向后兼容）
+      if (error.code === '42703') {
+        result = await pool.query(
+          'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, created_at, updated_at FROM users WHERE id = $1',
+          [userId]
+        );
+        // 为旧数据添加默认值
+        if (result.rows.length > 0) {
+          result.rows[0].assigned_order_types = null;
+          result.rows[0].admin_notes = null;
+        }
+      } else {
+        throw error;
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: '用户不存在' });
@@ -75,7 +94,96 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// 管理员创建客户账号
+// 更新当前用户信息（用户自己）
+export const updateProfile = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { contact_name, email, phone } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (contact_name !== undefined) {
+      updates.push(`contact_name = $${paramIndex++}`);
+      values.push(contact_name);
+    }
+    if (email !== undefined) {
+      updates.push(`email = $${paramIndex++}`);
+      values.push(email);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${paramIndex++}`);
+      values.push(phone);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: '没有要更新的字段' });
+    }
+
+    values.push(userId);
+    const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING id, username, customer_code, role, company_name, contact_name, email, phone, created_at, updated_at`;
+    const result = await pool.query(updateQuery, values);
+
+    res.json({
+      message: '个人信息更新成功',
+      user: result.rows[0],
+    });
+  } catch (error) {
+    console.error('更新个人信息错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 修改当前用户密码
+export const updatePassword = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { old_password, new_password } = req.body;
+
+    if (!old_password || !new_password) {
+      return res.status(400).json({ error: '旧密码和新密码不能为空' });
+    }
+
+    // 获取用户信息
+    const userResult = await pool.query(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 验证旧密码
+    const isValidPassword = await comparePassword(
+      old_password,
+      userResult.rows[0].password_hash
+    );
+
+    if (!isValidPassword) {
+      return res.status(400).json({ error: '旧密码错误' });
+    }
+
+    // 加密新密码
+    const passwordHash = await hashPassword(new_password);
+
+    // 更新密码
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [
+      passwordHash,
+      userId,
+    ]);
+
+    res.json({
+      message: '密码修改成功',
+    });
+  } catch (error) {
+    console.error('修改密码错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 管理员创建客户账号（保留向后兼容）
 export const createCustomer = async (req: AuthRequest, res: Response) => {
   try {
     const {

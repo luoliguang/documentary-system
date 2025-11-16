@@ -5,7 +5,7 @@
 INSERT INTO users (username, password_hash, role, customer_code, company_name, contact_name)
 VALUES (
     'customer001',
-    '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', -- 密码：admin123
+    '$2a$10$r6qE6NwozPBc9FgxhtPKouPAmyZUA3Ghxqf4H1KhdvZN2NUQM.y9y', -- 密码：admin123
     'customer',
     'CUST001',
     '测试客户公司A',

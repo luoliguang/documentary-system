@@ -5,6 +5,8 @@ import { pool } from './config/database.js';
 import authRoutes from './routes/authRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 const app = express();
 
@@ -21,10 +23,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: '跟单系统API运行正常' });
 });
 
+// 静态文件服务（用于访问上传的图片）
+app.use('/uploads', express.static('uploads'));
+
 // API 路由
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reminders', reminderRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/users', userRoutes);
 
 // 404 处理
 app.use((req, res) => {

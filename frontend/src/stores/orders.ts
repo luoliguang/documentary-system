@@ -18,6 +18,8 @@ export const useOrdersStore = defineStore('orders', () => {
   const fetchOrders = async (params?: {
     page?: number;
     pageSize?: number;
+    order_number?: string;
+    customer_order_number?: string;
     status?: string;
     is_completed?: boolean;
     can_ship?: boolean;
@@ -87,6 +89,25 @@ export const useOrdersStore = defineStore('orders', () => {
     }
   };
 
+  // 删除订单
+  const deleteOrder = async (id: number) => {
+    try {
+      await ordersApi.deleteOrder(id);
+      // 从本地列表中移除
+      orders.value = orders.value.filter((o) => o.id !== id);
+      if (currentOrder.value?.id === id) {
+        currentOrder.value = null;
+      }
+      // 更新分页总数
+      if (pagination.value.total > 0) {
+        pagination.value.total -= 1;
+      }
+      return true;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return {
     orders,
     currentOrder,
@@ -96,6 +117,7 @@ export const useOrdersStore = defineStore('orders', () => {
     fetchOrderById,
     completeOrder,
     updateOrder,
+    deleteOrder,
   };
 });
 

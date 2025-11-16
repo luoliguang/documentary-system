@@ -36,6 +36,17 @@ const router = createRouter({
           name: 'Reminders',
           component: () => import('../views/reminders/ReminderList.vue'),
         },
+        {
+          path: 'profile',
+          name: 'Profile',
+          component: () => import('../views/users/Profile.vue'),
+        },
+        {
+          path: 'users',
+          name: 'UserList',
+          component: () => import('../views/users/UserList.vue'),
+          meta: { requiresAdmin: true },
+        },
       ],
     },
   ],

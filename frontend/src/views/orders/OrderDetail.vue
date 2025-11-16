@@ -59,10 +59,10 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="预计出货日期">
-            {{ order.estimated_ship_date || '-' }}
+            {{ formatDateOnly(order.estimated_ship_date) }}
           </el-descriptions-item>
           <el-descriptions-item label="实际出货日期">
-            {{ order.actual_ship_date || '-' }}
+            {{ formatDateOnly(order.actual_ship_date) }}
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">
             {{ formatDate(order.created_at) }}
@@ -94,11 +94,47 @@
           </el-descriptions-item>
         </el-descriptions>
 
+        <!-- 订单图片 -->
+        <div v-if="order.images && order.images.length > 0" style="margin-top: 20px">
+          <h4>订单图片</h4>
+          <div class="image-gallery" style="margin-top: 10px">
+            <el-image
+              v-for="(image, index) in order.images"
+              :key="index"
+              :src="image"
+              :preview-src-list="order.images"
+              :initial-index="index"
+              fit="cover"
+              class="order-image"
+              :preview-teleported="true"
+            />
+          </div>
+        </div>
+
+        <!-- 发货单号 -->
+        <div v-if="order.shipping_tracking_numbers && order.shipping_tracking_numbers.length > 0" style="margin-top: 20px">
+          <h4>发货单号</h4>
+          <div class="tracking-numbers" style="margin-top: 10px">
+            <el-tag
+              v-for="(tracking, index) in order.shipping_tracking_numbers"
+              :key="index"
+              :type="getTrackingType(tracking.type)"
+              size="large"
+              class="tracking-tag"
+              @click="copyTrackingNumber(tracking.number)"
+            >
+              <span class="tracking-label">{{ tracking.label || getTrackingLabel(tracking.type) }}：</span>
+              <span class="tracking-number">{{ tracking.number }}</span>
+              <el-icon class="copy-icon"><DocumentCopy /></el-icon>
+            </el-tag>
+          </div>
+        </div>
+
         <!-- 备注信息 -->
         <div style="margin-top: 20px">
           <h4>情况备注</h4>
           <el-input
-            v-model="order.notes"
+            :value="order.notes || ''"
             type="textarea"
             :rows="4"
             placeholder="暂无备注"
@@ -179,11 +215,12 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Right } from '@element-plus/icons-vue';
+import { Right, DocumentCopy } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
 import { ordersApi } from '../../api/orders';
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
+import type { ShippingTrackingNumber } from '../../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -226,6 +263,50 @@ const getStatusText = (status: string) => {
 const formatDate = (date: string) => {
   if (!date) return '-';
   return new Date(date).toLocaleString('zh-CN');
+};
+
+const formatDateOnly = (date: string) => {
+  if (!date) return '-';
+  try {
+    const dateObj = new Date(date);
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch (error) {
+    return date;
+  }
+};
+
+const getTrackingType = (type: string) => {
+  const map: Record<string, string> = {
+    main: 'success',
+    supplement: 'warning',
+    split_address: 'info',
+    other: '',
+  };
+  return map[type] || '';
+};
+
+const getTrackingLabel = (type: string) => {
+  const map: Record<string, string> = {
+    main: '主单号',
+    supplement: '补件单号',
+    split_address: '分地址单号',
+    other: '其他单号',
+  };
+  return map[type] || '单号';
+};
+
+const copyTrackingNumber = async (number: string) => {
+  try {
+    await navigator.clipboard.writeText(number);
+    ElMessage.success(`已复制单号：${number}`);
+  } catch (error) {
+    ElMessage.error('复制失败，请手动复制');
+  }
 };
 
 const loadOrder = async () => {
@@ -309,6 +390,53 @@ h4 {
   font-size: 16px;
   font-weight: 500;
   color: #303133;
+}
+
+.image-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.order-image {
+  width: 150px;
+  height: 150px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #dcdfe6;
+}
+
+.tracking-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tracking-tag {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.tracking-tag:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.tracking-label {
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.tracking-number {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+}
+
+.copy-icon {
+  margin-left: 6px;
+  font-size: 14px;
 }
 </style>
 

@@ -13,7 +13,10 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       const {
         customer_id,
         customer_code,
+        order_number,
+        customer_order_number,
         status,
+        order_type,
         is_completed,
         can_ship,
         page = 1,
@@ -32,9 +35,21 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         whereConditions.push(`o.customer_code = $${paramIndex++}`);
         params.push(customer_code);
       }
+      if (order_number) {
+        whereConditions.push(`o.order_number ILIKE $${paramIndex++}`);
+        params.push(`%${order_number}%`);
+      }
+      if (customer_order_number) {
+        whereConditions.push(`o.customer_order_number ILIKE $${paramIndex++}`);
+        params.push(`%${customer_order_number}%`);
+      }
       if (status) {
         whereConditions.push(`o.status = $${paramIndex++}`);
         params.push(status);
+      }
+      if (order_type) {
+        whereConditions.push(`o.order_type = $${paramIndex++}`);
+        params.push(order_type);
       }
       if (is_completed !== undefined) {
         whereConditions.push(`o.is_completed = $${paramIndex++}`);
@@ -80,12 +95,144 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
           ),
         },
       });
+    } else if (user.role === 'production_manager') {
+      // 生产跟单：只能查看分配的订单类型
+      const {
+        order_number,
+        customer_order_number,
+        status,
+        order_type,
+        is_completed,
+        page = 1,
+        pageSize = 20,
+      } = req.query;
+
+      // 获取该生产跟单的订单类型权限
+      let assignedTypes: string[] = [];
+      try {
+        const userResult = await pool.query(
+          'SELECT assigned_order_types FROM users WHERE id = $1',
+          [user.userId]
+        );
+        assignedTypes = userResult.rows[0]?.assigned_order_types || [];
+      } catch (error: any) {
+        // 如果字段不存在，说明数据库还未迁移，返回空列表
+        if (error.code === '42703') {
+          assignedTypes = [];
+        } else {
+          throw error;
+        }
+      }
+
+      if (assignedTypes.length === 0) {
+        // 如果没有分配订单类型，返回空列表
+        return res.json({
+          orders: [],
+          pagination: {
+            total: 0,
+            page: Number(page),
+            pageSize: Number(pageSize),
+            totalPages: 0,
+          },
+        });
+      }
+
+      let whereConditions: string[] = [];
+      params = [];
+      let paramIndex = 1;
+
+      // 生产跟单只能查看分配给自己的订单
+      whereConditions.push(`o.assigned_to = $${paramIndex++}`);
+      params.push(user.userId);
+
+      if (order_number) {
+        whereConditions.push(`o.order_number ILIKE $${paramIndex++}`);
+        params.push(`%${order_number}%`);
+      }
+      if (customer_order_number) {
+        whereConditions.push(`o.customer_order_number ILIKE $${paramIndex++}`);
+        params.push(`%${customer_order_number}%`);
+      }
+      if (status) {
+        whereConditions.push(`o.status = $${paramIndex++}`);
+        params.push(status);
+      }
+      // 如果指定了订单类型，需要确保在分配的范围内
+      if (order_type) {
+        const orderTypeStr = String(order_type);
+        if (assignedTypes.includes(orderTypeStr)) {
+          whereConditions.push(`o.order_type = $${paramIndex++}`);
+          params.push(orderTypeStr);
+        } else {
+          // 如果请求的订单类型不在权限范围内，返回空列表
+          return res.json({
+            orders: [],
+            pagination: {
+              total: 0,
+              page: Number(page),
+              pageSize: Number(pageSize),
+              totalPages: 0,
+            },
+          });
+        }
+      }
+      if (is_completed !== undefined) {
+        whereConditions.push(`o.is_completed = $${paramIndex++}`);
+        params.push(is_completed === 'true');
+      }
+
+      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+      const offset = (Number(page) - 1) * Number(pageSize);
+      params.push(Number(pageSize), offset);
+
+      query = `
+        SELECT o.*, u.company_name, u.contact_name, u.phone as customer_phone, u.email as customer_email
+        FROM orders o
+        LEFT JOIN users u ON o.customer_id = u.id
+        ${whereClause}
+        ORDER BY o.created_at DESC
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      `;
+
+      const countQuery = `SELECT COUNT(*) as total FROM orders o ${whereClause}`;
+      const countResult = await pool.query(
+        countQuery,
+        params.slice(0, params.length - 2)
+      );
+      const result = await pool.query(query, params);
+
+      res.json({
+        orders: result.rows,
+        pagination: {
+          total: parseInt(countResult.rows[0].total),
+          page: Number(page),
+          pageSize: Number(pageSize),
+          totalPages: Math.ceil(
+            parseInt(countResult.rows[0].total) / Number(pageSize)
+          ),
+        },
+      });
     } else {
-      const { status, is_completed, page = 1, pageSize = 20 } = req.query;
+      const {
+        order_number,
+        customer_order_number,
+        status,
+        is_completed,
+        page = 1,
+        pageSize = 20,
+      } = req.query;
       let whereConditions = ['o.customer_id = $1'];
       params = [user.userId];
       let paramIndex = 2;
 
+      if (order_number) {
+        whereConditions.push(`o.order_number ILIKE $${paramIndex++}`);
+        params.push(`%${order_number}%`);
+      }
+      if (customer_order_number) {
+        whereConditions.push(`o.customer_order_number ILIKE $${paramIndex++}`);
+        params.push(`%${customer_order_number}%`);
+      }
       if (status) {
         whereConditions.push(`o.status = $${paramIndex++}`);
         params.push(status);
@@ -140,6 +287,8 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
     let query: string;
+    let params: any[];
+
     if (user.role === 'admin') {
       query = `
         SELECT o.*, u.company_name, u.contact_name, u.phone as customer_phone, u.email as customer_email
@@ -147,6 +296,37 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
         LEFT JOIN users u ON o.customer_id = u.id
         WHERE o.id = $1
       `;
+      params = [id];
+    } else if (user.role === 'production_manager') {
+      // 生产跟单：检查订单类型是否在权限范围内
+      let assignedTypes: string[] = [];
+      try {
+        const userResult = await pool.query(
+          'SELECT assigned_order_types FROM users WHERE id = $1',
+          [user.userId]
+        );
+        assignedTypes = userResult.rows[0]?.assigned_order_types || [];
+      } catch (error: any) {
+        // 如果字段不存在，说明数据库还未迁移，返回403
+        if (error.code === '42703') {
+          return res.status(403).json({ error: '无权访问' });
+        } else {
+          throw error;
+        }
+      }
+
+      if (assignedTypes.length === 0) {
+        return res.status(403).json({ error: '无权访问' });
+      }
+
+      // 生产跟单只能查看分配给自己的订单
+      query = `
+        SELECT o.*, u.company_name, u.contact_name, u.phone as customer_phone, u.email as customer_email
+        FROM orders o
+        LEFT JOIN users u ON o.customer_id = u.id
+        WHERE o.id = $1 AND o.assigned_to = $2
+      `;
+      params = [id, user.userId];
     } else {
       query = `
         SELECT o.*, u.company_name, u.contact_name
@@ -154,9 +334,9 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
         LEFT JOIN users u ON o.customer_id = u.id
         WHERE o.id = $1 AND o.customer_id = $2
       `;
+      params = [id, user.userId];
     }
 
-    const params = user.role === 'admin' ? [id] : [id, user.userId];
     const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
@@ -185,9 +365,12 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       customer_code,
       customer_order_number,
       status = 'pending',
+      order_type = 'required',
       notes,
       internal_notes,
       estimated_ship_date,
+      images,
+      shipping_tracking_numbers,
     } = req.body;
 
     if (!order_number || !customer_id) {
@@ -216,17 +399,20 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     const result = await pool.query(
       `INSERT INTO orders (
         order_number, customer_id, customer_code, customer_order_number,
-        status, notes, internal_notes, estimated_ship_date, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        status, order_type, notes, internal_notes, estimated_ship_date, images, shipping_tracking_numbers, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         order_number,
         customer_id,
         finalCustomerCode,
         customer_order_number || null,
         status,
+        order_type,
         notes || null,
         internal_notes || null,
         estimated_ship_date || null,
+        images ? JSON.stringify(images) : '[]',
+        shipping_tracking_numbers ? JSON.stringify(shipping_tracking_numbers) : '[]',
         user.userId,
       ]
     );
@@ -261,6 +447,9 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
       notes,
       internal_notes,
       customer_order_number,
+      order_type,
+      images,
+      shipping_tracking_numbers,
     } = req.body;
 
     const oldOrderResult = await pool.query(
@@ -308,6 +497,18 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
       updates.push(`customer_order_number = $${paramIndex++}`);
       values.push(customer_order_number);
     }
+    if (order_type !== undefined) {
+      updates.push(`order_type = $${paramIndex++}`);
+      values.push(order_type);
+    }
+    if (images !== undefined) {
+      updates.push(`images = $${paramIndex++}`);
+      values.push(JSON.stringify(images));
+    }
+    if (shipping_tracking_numbers !== undefined) {
+      updates.push(`shipping_tracking_numbers = $${paramIndex++}`);
+      values.push(JSON.stringify(shipping_tracking_numbers));
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: '没有要更新的字段' });
@@ -325,9 +526,18 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
       );
     }
 
+    // 获取完整的订单信息（包含关联的客户信息）
+    const fullOrderQuery = `
+      SELECT o.*, u.company_name, u.contact_name, u.phone as customer_phone, u.email as customer_email
+      FROM orders o
+      LEFT JOIN users u ON o.customer_id = u.id
+      WHERE o.id = $1
+    `;
+    const fullOrderResult = await pool.query(fullOrderQuery, [id]);
+
     res.json({
       message: '订单更新成功',
-      order: result.rows[0],
+      order: fullOrderResult.rows[0],
     });
   } catch (error) {
     console.error('更新订单错误:', error);
@@ -420,16 +630,41 @@ export const getOrderStatusHistory = async (
     const { id } = req.params;
 
     let orderQuery: string;
+    let orderParams: any[];
+
     if (user.role === 'admin') {
       orderQuery = 'SELECT id FROM orders WHERE id = $1';
+      orderParams = [id];
+    } else if (user.role === 'production_manager') {
+      // 生产跟单：检查订单类型是否在权限范围内
+      let assignedTypes: string[] = [];
+      try {
+        const userResult = await pool.query(
+          'SELECT assigned_order_types FROM users WHERE id = $1',
+          [user.userId]
+        );
+        assignedTypes = userResult.rows[0]?.assigned_order_types || [];
+      } catch (error: any) {
+        // 如果字段不存在，说明数据库还未迁移，返回403
+        if (error.code === '42703') {
+          return res.status(403).json({ error: '无权访问' });
+        } else {
+          throw error;
+        }
+      }
+
+      if (assignedTypes.length === 0) {
+        return res.status(403).json({ error: '无权访问' });
+      }
+
+      orderQuery = 'SELECT id FROM orders WHERE id = $1 AND order_type = ANY($2::text[])';
+      orderParams = [id, assignedTypes];
     } else {
       orderQuery = 'SELECT id FROM orders WHERE id = $1 AND customer_id = $2';
+      orderParams = [id, user.userId];
     }
 
-    const orderResult = await pool.query(
-      orderQuery,
-      user.role === 'admin' ? [id] : [id, user.userId]
-    );
+    const orderResult = await pool.query(orderQuery, orderParams);
     if (orderResult.rows.length === 0) {
       return res.status(404).json({ error: '订单不存在或无权访问' });
     }
@@ -462,6 +697,143 @@ export const getCustomers = async (req: AuthRequest, res: Response) => {
     res.json({ customers: result.rows });
   } catch (error) {
     console.error('获取客户列表错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 获取所有生产跟单列表（仅管理员）
+export const getProductionManagers = async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, username, company_name, contact_name, email, phone, assigned_order_types, created_at
+       FROM users WHERE role = 'production_manager' AND is_active = true
+       ORDER BY created_at DESC`
+    );
+
+    res.json({ productionManagers: result.rows });
+  } catch (error) {
+    console.error('获取生产跟单列表错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 分配订单给生产跟单（仅管理员）
+export const assignOrderToProductionManager = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+    const { assigned_to } = req.body;
+
+    // 只有管理员可以操作
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: '无权操作' });
+    }
+
+    // 检查订单是否存在
+    const orderResult = await pool.query('SELECT * FROM orders WHERE id = $1', [
+      id,
+    ]);
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: '订单不存在' });
+    }
+
+    // 如果指定了assigned_to，验证该用户是否为生产跟单
+    if (assigned_to) {
+      const userResult = await pool.query(
+        'SELECT role, assigned_order_types FROM users WHERE id = $1',
+        [assigned_to]
+      );
+      if (
+        userResult.rows.length === 0 ||
+        userResult.rows[0].role !== 'production_manager'
+      ) {
+        return res.status(400).json({ error: '指定的用户不是生产跟单' });
+      }
+
+      // 验证订单类型是否在生产跟单的权限范围内
+      const order = orderResult.rows[0];
+      const assignedTypes = userResult.rows[0].assigned_order_types || [];
+      if (order.order_type && !assignedTypes.includes(order.order_type)) {
+        return res.status(400).json({
+          error: `该生产跟单没有权限处理"${order.order_type}"类型的订单`,
+        });
+      }
+    }
+
+    // 更新订单
+    const result = await pool.query(
+      `UPDATE orders SET assigned_to = $1 WHERE id = $2 RETURNING *`,
+      [assigned_to || null, id]
+    );
+
+    // 获取完整的订单信息（包含关联的客户信息）
+    const fullOrderQuery = `
+      SELECT o.*, u.company_name, u.contact_name, u.phone as customer_phone, u.email as customer_email
+      FROM orders o
+      LEFT JOIN users u ON o.customer_id = u.id
+      WHERE o.id = $1
+    `;
+    const fullOrderResult = await pool.query(fullOrderQuery, [id]);
+
+    res.json({
+      message: assigned_to ? '订单分配成功' : '订单分配已取消',
+      order: fullOrderResult.rows[0],
+    });
+  } catch (error) {
+    console.error('分配订单错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 删除订单（仅管理员）
+export const deleteOrder = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+
+    // 检查订单是否存在
+    const orderResult = await pool.query('SELECT * FROM orders WHERE id = $1', [
+      id,
+    ]);
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: '订单不存在' });
+    }
+
+    // 开始事务：删除订单相关的所有记录
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 删除订单状态历史
+      await client.query(
+        'DELETE FROM order_status_history WHERE order_id = $1',
+        [id]
+      );
+
+      // 删除催货记录
+      await client.query('DELETE FROM delivery_reminders WHERE order_id = $1', [
+        id,
+      ]);
+
+      // 删除订单
+      await client.query('DELETE FROM orders WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+
+      res.json({
+        message: '订单删除成功',
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('删除订单错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 };

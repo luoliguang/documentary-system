@@ -13,6 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value);
   const isAdmin = computed(() => user.value?.role === 'admin');
   const isCustomer = computed(() => user.value?.role === 'customer');
+  const isProductionManager = computed(() => user.value?.role === 'production_manager');
 
   // 登录
   const login = async (username: string, password: string) => {
@@ -57,6 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isAdmin,
     isCustomer,
+    isProductionManager,
     login,
     logout,
     fetchCurrentUser,

@@ -3,14 +3,23 @@ export interface User {
   id: number;
   username: string;
   customer_code?: string;
-  role: 'customer' | 'admin';
+  role: 'customer' | 'admin' | 'production_manager';
   company_name?: string;
   contact_name?: string;
   email?: string;
   phone?: string;
+  assigned_order_types?: string[]; // 生产跟单的订单类型权限
+  admin_notes?: string; // 管理员备注，仅管理员可见
   created_at: string;
   updated_at: string;
   is_active: boolean;
+}
+
+// 发货单号类型
+export interface ShippingTrackingNumber {
+  type: 'main' | 'supplement' | 'split_address' | 'other'; // 主单号、补件单号、分地址单号、其他
+  number: string; // 单号
+  label?: string; // 自定义标签（如"主单号"、"补件单号"等）
 }
 
 // 订单类型
@@ -21,12 +30,16 @@ export interface Order {
   customer_code?: string;
   customer_order_number?: string;
   status: 'pending' | 'in_production' | 'completed' | 'shipped' | 'cancelled';
+  order_type?: 'required' | 'scattered' | 'photo'; // 订单类型：必发、散单、拍照
+  assigned_to?: number; // 分配给哪个生产跟单
   is_completed: boolean;
   can_ship: boolean;
   estimated_ship_date?: string;
   actual_ship_date?: string;
   notes?: string;
   internal_notes?: string;
+  images?: string[]; // 订单图片URL数组
+  shipping_tracking_numbers?: ShippingTrackingNumber[]; // 发货单号数组
   created_at: string;
   updated_at: string;
   created_by?: number;
@@ -45,6 +58,8 @@ export interface DeliveryReminder {
   reminder_type: 'normal' | 'urgent';
   message?: string;
   admin_response?: string;
+  is_admin_assigned?: boolean; // 是否为管理员派送的催货任务
+  assigned_to?: number; // 分配给哪个生产跟单
   is_resolved: boolean;
   created_at: string;
   resolved_at?: string;
@@ -52,6 +67,7 @@ export interface DeliveryReminder {
   order_number?: string;
   company_name?: string;
   contact_name?: string;
+  images?: string[]; // 订单图片URL数组
 }
 
 // 订单状态历史类型

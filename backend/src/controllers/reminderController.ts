@@ -84,6 +84,7 @@ export const getDeliveryReminders = async (
           dr.*,
           o.order_number,
           o.customer_code,
+          o.images,
           u.company_name,
           u.contact_name
         FROM delivery_reminders dr
@@ -93,12 +94,76 @@ export const getDeliveryReminders = async (
         ORDER BY dr.created_at DESC
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
       `;
+    } else if (user.role === 'production_manager') {
+      // 生产跟单：只能查看管理员派送的催货任务
+      const { order_id, is_resolved, page = 1, pageSize = 20 } = req.query;
+      let whereConditions: string[] = [];
+      params = [];
+      let paramIndex = 1;
+
+      // 只能查看管理员派送的任务
+      whereConditions.push(`dr.is_admin_assigned = true`);
+      
+      // 如果指定了assigned_to，则只显示分配给自己的
+      whereConditions.push(`(dr.assigned_to IS NULL OR dr.assigned_to = $${paramIndex++})`);
+      params.push(user.userId);
+
+      if (order_id) {
+        whereConditions.push(`dr.order_id = $${paramIndex++}`);
+        params.push(order_id);
+      }
+
+      if (is_resolved !== undefined) {
+        whereConditions.push(`dr.is_resolved = $${paramIndex++}`);
+        params.push(is_resolved === 'true');
+      }
+
+      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+      const offset = (Number(page) - 1) * Number(pageSize);
+      params.push(Number(pageSize), offset);
+
+      query = `
+        SELECT 
+          dr.*,
+          o.order_number,
+          o.customer_code,
+          o.images,
+          u.company_name,
+          u.contact_name
+        FROM delivery_reminders dr
+        LEFT JOIN orders o ON dr.order_id = o.id
+        LEFT JOIN users u ON dr.customer_id = u.id
+        ${whereClause}
+        ORDER BY dr.created_at DESC
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      `;
+
+      const countQuery = `SELECT COUNT(*) as total FROM delivery_reminders dr ${whereClause}`;
+      const countResult = await pool.query(
+        countQuery,
+        params.slice(0, params.length - 2)
+      );
+      const result = await pool.query(query, params);
+
+      res.json({
+        reminders: result.rows,
+        pagination: {
+          total: parseInt(countResult.rows[0].total),
+          page: Number(page),
+          pageSize: Number(pageSize),
+          totalPages: Math.ceil(
+            parseInt(countResult.rows[0].total) / Number(pageSize)
+          ),
+        },
+      });
+      return;
     } else {
       // 客户只能查看自己的催货记录
       query = `
         SELECT 
           dr.*,
-          o.order_number
+          o.order_number,
+          o.images
         FROM delivery_reminders dr
         LEFT JOIN orders o ON dr.order_id = o.id
         WHERE dr.customer_id = $1
@@ -151,6 +216,102 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('回复催货错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 管理员派送催货任务给生产跟单
+export const assignReminderToProductionManager = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+    const { assigned_to } = req.body;
+
+    // 只有管理员可以操作
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: '无权操作' });
+    }
+
+    // 检查催货记录是否存在
+    const reminderResult = await pool.query(
+      'SELECT * FROM delivery_reminders WHERE id = $1',
+      [id]
+    );
+
+    if (reminderResult.rows.length === 0) {
+      return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    // 如果指定了assigned_to，验证该用户是否为生产跟单
+    if (assigned_to) {
+      const userResult = await pool.query(
+        'SELECT role FROM users WHERE id = $1',
+        [assigned_to]
+      );
+      if (
+        userResult.rows.length === 0 ||
+        userResult.rows[0].role !== 'production_manager'
+      ) {
+        return res.status(400).json({ error: '指定的用户不是生产跟单' });
+      }
+    }
+
+    // 更新催货记录
+    const result = await pool.query(
+      `UPDATE delivery_reminders 
+       SET is_admin_assigned = true, assigned_to = $1 
+       WHERE id = $2
+       RETURNING *`,
+      [assigned_to || null, id]
+    );
+
+    res.json({
+      message: '催货任务派送成功',
+      reminder: result.rows[0],
+    });
+  } catch (error) {
+    console.error('派送催货任务错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 删除催货记录
+export const deleteReminder = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+
+    // 检查催货记录是否存在
+    const reminderResult = await pool.query(
+      'SELECT * FROM delivery_reminders WHERE id = $1',
+      [id]
+    );
+
+    if (reminderResult.rows.length === 0) {
+      return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    const reminder = reminderResult.rows[0];
+
+    // 管理员可以删除所有记录，客户只能删除自己的记录，生产跟单不能删除
+    if (user.role === 'production_manager') {
+      return res.status(403).json({ error: '无权删除此催货记录' });
+    }
+    if (user.role !== 'admin' && reminder.customer_id !== user.userId) {
+      return res.status(403).json({ error: '无权删除此催货记录' });
+    }
+
+    // 删除催货记录
+    await pool.query('DELETE FROM delivery_reminders WHERE id = $1', [id]);
+
+    res.json({
+      message: '催货记录删除成功',
+    });
+  } catch (error) {
+    console.error('删除催货记录错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 };
