@@ -7,6 +7,7 @@ import orderRoutes from './routes/orderRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import configRoutes from './routes/configRoutes.js';
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/configs', configRoutes);
 
 // 404 处理
 app.use((req, res) => {

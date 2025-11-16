@@ -7,20 +7,33 @@ import { AuthRequest } from '../middleware/auth.js';
 // 用户登录
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { account, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({ error: '用户名和密码不能为空' });
+    if (!account || !password) {
+      return res.status(400).json({ error: '账号和密码不能为空' });
     }
 
-    // 查询用户
-    const result = await pool.query(
-      'SELECT * FROM users WHERE username = $1 AND is_active = true',
-      [username]
-    );
+    // 查询用户（优先使用 account 字段，如果 account 字段不存在则使用 username 作为后备）
+    let result;
+    try {
+      result = await pool.query(
+        'SELECT * FROM users WHERE account = $1 AND is_active = true',
+        [account]
+      );
+    } catch (error: any) {
+      // 如果 account 字段不存在（向后兼容），使用 username
+      if (error.code === '42703') {
+        result = await pool.query(
+          'SELECT * FROM users WHERE username = $1 AND is_active = true',
+          [account]
+        );
+      } else {
+        throw error;
+      }
+    }
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: '用户名或密码错误' });
+      return res.status(401).json({ error: '账号或密码错误' });
     }
 
     const user = result.rows[0];
@@ -29,7 +42,7 @@ export const login = async (req: Request, res: Response) => {
     const isValidPassword = await comparePassword(password, user.password_hash);
 
     if (!isValidPassword) {
-      return res.status(401).json({ error: '用户名或密码错误' });
+      return res.status(401).json({ error: '账号或密码错误' });
     }
 
     // 生成JWT token

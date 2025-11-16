@@ -72,6 +72,13 @@
             <el-icon><Setting /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
+          <el-menu-item
+            v-if="authStore.isAdmin"
+            index="/configs"
+          >
+            <el-icon><Tools /></el-icon>
+            <span>系统配置</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
 
@@ -115,6 +122,13 @@
             <el-icon><Setting /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
+          <el-menu-item
+            v-if="authStore.isAdmin"
+            index="/configs"
+          >
+            <el-icon><Tools /></el-icon>
+            <span>系统配置</span>
+          </el-menu-item>
         </el-menu>
       </el-drawer>
 
@@ -138,6 +152,7 @@ import {
   Plus,
   Menu,
   Setting,
+  Tools,
 } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 

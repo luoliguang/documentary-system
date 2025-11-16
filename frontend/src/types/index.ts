@@ -1,7 +1,8 @@
 // 用户类型
 export interface User {
   id: number;
-  username: string;
+  account?: string; // 登录账号，仅允许字母、数字、下划线
+  username: string; // 用户名/显示名称，可以包含中文
   customer_code?: string;
   role: 'customer' | 'admin' | 'production_manager';
   company_name?: string;
@@ -103,7 +104,7 @@ export interface OrdersResponse {
 
 // 登录请求类型
 export interface LoginRequest {
-  username: string;
+  account: string; // 登录账号
   password: string;
 }
 

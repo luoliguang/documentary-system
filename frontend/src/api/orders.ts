@@ -29,7 +29,7 @@ export const ordersApi = {
     return api.post('/orders', data);
   },
 
-  // 更新订单（仅管理员）
+  // 更新订单（管理员和生产跟单，具体权限由后端权限配置决定）
   updateOrder: (id: number, data: Partial<Order>): Promise<{ message: string; order: Order }> => {
     return api.put(`/orders/${id}`, data);
   },

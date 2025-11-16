@@ -51,19 +51,23 @@
 
         <el-form-item label="订单类型" prop="order_type">
           <el-select v-model="form.order_type" placeholder="请选择订单类型">
-            <el-option label="必发" value="required" />
-            <el-option label="散单" value="scattered" />
-            <el-option label="拍照" value="photo" />
+            <el-option
+              v-for="type in orderTypes"
+              :key="type.value"
+              :label="type.label"
+              :value="type.value"
+            />
           </el-select>
         </el-form-item>
 
         <el-form-item label="订单状态" prop="status">
           <el-select v-model="form.status" placeholder="请选择状态">
-            <el-option label="待处理" value="pending" />
-            <el-option label="生产中" value="in_production" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="已发货" value="shipped" />
-            <el-option label="已取消" value="cancelled" />
+            <el-option
+              v-for="status in orderStatuses"
+              :key="status.value"
+              :label="status.label"
+              :value="status.value"
+            />
           </el-select>
         </el-form-item>
 
@@ -225,6 +229,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { Delete, Upload, Picture, DocumentCopy, UploadFilled } from '@element-plus/icons-vue';
 import { ordersApi } from '../../api/orders';
 import { useAuthStore } from '../../stores/auth';
+import { useConfigOptions } from '../../composables/useConfigOptions';
 import type { ShippingTrackingNumber } from '../../types';
 
 const router = useRouter();
@@ -234,6 +239,9 @@ const loading = ref(false);
 const customers = ref<any[]>([]);
 const uploadAreaRef = ref<HTMLElement | null>(null);
 const isUploadAreaFocused = ref(false);
+
+// 配置选项
+const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
 
 const form = reactive({
   order_number: '',
@@ -449,6 +457,9 @@ const handleSubmit = async () => {
 
 onMounted(() => {
   loadCustomers();
+  // 加载配置选项
+  loadOrderTypes();
+  loadOrderStatuses();
   // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）
   const pasteHandler = (e: Event) => {
     handlePaste(e as ClipboardEvent);

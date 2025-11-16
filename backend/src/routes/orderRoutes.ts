@@ -44,7 +44,8 @@ router.patch(
 
 // 以下路由仅管理员可访问
 router.post('/', requireAdmin, createOrder);
-router.put('/:id', requireAdmin, updateOrder);
+// 更新订单：管理员和生产跟单都可以访问（权限在控制器中检查）
+router.put('/:id', updateOrder);
 router.patch('/:id/complete', requireAdmin, completeOrder);
 router.post('/:id/assign', requireAdmin, assignOrderToProductionManager);
 router.delete('/:id', requireAdmin, deleteOrder);

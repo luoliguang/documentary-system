@@ -4,7 +4,8 @@
 -- 用户表（客户和管理员）
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
+    account VARCHAR(50) UNIQUE, -- 登录账号，仅允许字母、数字、下划线，用于登录认证（允许为空，向后兼容）
+    username VARCHAR(50) NOT NULL, -- 用户名/显示名称，可以包含中文，用于显示
     password_hash VARCHAR(255) NOT NULL,
     customer_code VARCHAR(50) UNIQUE, -- 客户编号，管理员可以为空
     role VARCHAR(20) NOT NULL DEFAULT 'customer', -- 'customer'、'admin' 或 'production_manager'

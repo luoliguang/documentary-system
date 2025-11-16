@@ -18,9 +18,12 @@
         <el-form :inline="!isMobile" :model="filters" class="filter-form">
           <el-form-item label="角色">
             <el-select v-model="filters.role" placeholder="全部" clearable class="filter-select">
-              <el-option label="客户" value="customer" />
-              <el-option label="生产跟单" value="production_manager" />
-              <el-option label="管理员" value="admin" />
+              <el-option
+                v-for="role in roles"
+                :key="role.value"
+                :label="role.label"
+                :value="role.value"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="状态">
@@ -47,6 +50,11 @@
 
       <!-- 用户表格 -->
       <el-table v-loading="loading" :data="users" stripe style="width: 100%">
+        <el-table-column prop="account" label="账号" width="150">
+          <template #default="{ row }">
+            <span>{{ row.account || row.username || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="username" label="用户名" width="150" />
         <el-table-column prop="role" label="角色" width="120">
           <template #default="{ row }">
@@ -150,12 +158,19 @@
         :rules="rules"
         label-width="120px"
       >
+        <el-form-item label="账号" prop="account">
+          <el-input
+            v-model="form.account"
+            placeholder="请输入登录账号（仅允许字母、数字、下划线）"
+          />
+          <div class="form-tip">账号用于登录，仅允许字母、数字、下划线，长度 3-50 个字符</div>
+        </el-form-item>
         <el-form-item label="用户名" prop="username">
           <el-input
             v-model="form.username"
-            :disabled="!!currentUser"
-            placeholder="请输入用户名"
+            placeholder="请输入用户名/显示名称（可以包含中文）"
           />
+          <div class="form-tip">用户名用于显示，可以包含中文</div>
         </el-form-item>
         <el-form-item v-if="!currentUser" label="密码" prop="password">
           <el-input
@@ -167,9 +182,12 @@
         </el-form-item>
         <el-form-item label="角色" prop="role">
           <el-select v-model="form.role" placeholder="请选择角色" style="width: 100%">
-            <el-option label="客户" value="customer" />
-            <el-option label="生产跟单" value="production_manager" />
-            <el-option label="管理员" value="admin" />
+            <el-option
+              v-for="role in roles"
+              :key="role.value"
+              :label="role.label"
+              :value="role.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item
@@ -256,6 +274,7 @@ import { ElMessage, ElMessageBox, FormInstance } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { usersApi } from '../../api/users';
+import { useConfigOptions } from '../../composables/useConfigOptions';
 import type { User } from '../../types';
 
 const authStore = useAuthStore();
@@ -267,6 +286,9 @@ const pagination = ref({
   pageSize: 20,
   totalPages: 0,
 });
+
+// 配置选项
+const { roles, loadRoles } = useConfigOptions();
 
 const isMobile = ref(window.innerWidth <= 768);
 
@@ -286,6 +308,7 @@ const currentPasswordUser = ref<User | null>(null);
 const passwordFormRef = ref<FormInstance>();
 
 const form = reactive({
+  account: '',
   username: '',
   password: '',
   role: 'customer' as 'customer' | 'production_manager' | 'admin',
@@ -305,7 +328,33 @@ const passwordForm = reactive({
 });
 
 const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  account: [
+    { required: true, message: '请输入账号', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_]{3,50}$/, message: '账号格式不正确，仅允许字母、数字、下划线，长度 3-50 个字符', trigger: 'blur' },
+    {
+      validator: (_rule: any, value: any, callback: any) => {
+        if (value && form.username && value === form.username) {
+          callback(new Error('账号和用户名不能相同'));
+        } else {
+          callback();
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    {
+      validator: (_rule: any, value: any, callback: any) => {
+        if (value && form.account && value === form.account) {
+          callback(new Error('用户名和账号不能相同'));
+        } else {
+          callback();
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
@@ -316,7 +365,7 @@ const rules = {
       required: true,
       message: '客户编号不能为空',
       trigger: 'blur',
-      validator: (rule: any, value: any, callback: any) => {
+      validator: (_rule: any, value: any, callback: any) => {
         if (form.role === 'customer' && !value) {
           callback(new Error('客户编号不能为空'));
         } else {
@@ -335,7 +384,7 @@ const passwordRules = {
   confirm_password: [
     { required: true, message: '请确认密码', trigger: 'blur' },
     {
-      validator: (rule: any, value: any, callback: any) => {
+      validator: (_rule: any, value: any, callback: any) => {
         if (value !== passwordForm.new_password) {
           callback(new Error('两次输入的密码不一致'));
         } else {
@@ -382,6 +431,7 @@ const resetFilters = () => {
 const handleCreate = () => {
   currentUser.value = null;
   Object.assign(form, {
+    account: '',
     username: '',
     password: '',
     role: 'customer',
@@ -400,6 +450,7 @@ const handleCreate = () => {
 const handleEdit = (row: User) => {
   currentUser.value = row;
   Object.assign(form, {
+    account: row.account || row.username, // 如果没有 account，使用 username
     username: row.username,
     password: '',
     role: row.role,
@@ -425,6 +476,8 @@ const submitForm = async () => {
       if (currentUser.value) {
         // 更新用户
         const updateData: any = {
+          account: form.account,
+          username: form.username,
           company_name: form.company_name,
           contact_name: form.contact_name,
           email: form.email,
@@ -440,6 +493,7 @@ const submitForm = async () => {
       } else {
         // 创建用户
         const createData: any = {
+          account: form.account,
           username: form.username,
           password: form.password,
           role: form.role,
@@ -505,17 +559,18 @@ const handleToggleStatus = async (row: User) => {
 const handleDelete = async (row: User) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除用户"${row.username}"吗？此操作将禁用该用户账号。`,
+      `确定要永久删除用户"${row.username || row.account}"吗？此操作不可恢复！`,
       '确认删除',
       {
-        confirmButtonText: '确定',
+        confirmButtonText: '确定删除',
         cancelButtonText: '取消',
-        type: 'warning',
+        type: 'error',
+        dangerouslyUseHTMLString: false,
       }
     );
 
     await usersApi.deleteUser(row.id);
-    ElMessage.success('用户已删除');
+    ElMessage.success('用户已永久删除');
     await loadUsers();
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -535,6 +590,7 @@ const handlePageChange = () => {
 
 onMounted(() => {
   loadUsers();
+  loadRoles();
 });
 </script>
 
@@ -570,6 +626,13 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 @media (max-width: 768px) {

@@ -16,9 +16,9 @@ export const useAuthStore = defineStore('auth', () => {
   const isProductionManager = computed(() => user.value?.role === 'production_manager');
 
   // 登录
-  const login = async (username: string, password: string) => {
+  const login = async (account: string, password: string) => {
     try {
-      const response = await authApi.login({ username, password });
+      const response = await authApi.login({ account, password });
       token.value = response.token;
       user.value = response.user;
 

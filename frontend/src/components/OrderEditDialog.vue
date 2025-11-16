@@ -11,21 +11,25 @@
       :rules="rules"
       label-width="120px"
     >
-      <el-form-item label="订单类型" prop="order_type">
+      <el-form-item v-if="authStore.isAdmin" label="订单类型" prop="order_type">
         <el-select v-model="form.order_type" placeholder="请选择订单类型" style="width: 100%">
-          <el-option label="必发" value="required" />
-          <el-option label="散单" value="scattered" />
-          <el-option label="拍照" value="photo" />
+          <el-option
+            v-for="type in orderTypes"
+            :key="type.value"
+            :label="type.label"
+            :value="type.value"
+          />
         </el-select>
       </el-form-item>
 
-      <el-form-item label="订单状态" prop="status">
+      <el-form-item v-if="authStore.isAdmin" label="订单状态" prop="status">
         <el-select v-model="form.status" placeholder="请选择状态" style="width: 100%">
-          <el-option label="待处理" value="pending" />
-          <el-option label="生产中" value="in_production" />
-          <el-option label="已完成" value="completed" />
-          <el-option label="已发货" value="shipped" />
-          <el-option label="已取消" value="cancelled" />
+          <el-option
+            v-for="status in orderStatuses"
+            :key="status.value"
+            :label="status.label"
+            :value="status.value"
+          />
         </el-select>
       </el-form-item>
 
@@ -40,16 +44,16 @@
       <el-form-item label="预计出货日期">
         <el-date-picker
           v-model="form.estimated_ship_date"
-          type="datetime"
-          placeholder="请选择预计出货日期和时间"
+          type="date"
+          placeholder="请选择预计出货日期"
           style="width: 100%"
-          value-format="YYYY-MM-DD HH:mm:ss"
-          format="YYYY-MM-DD HH:mm"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
           clearable
         />
       </el-form-item>
 
-      <el-form-item label="实际出货日期">
+      <el-form-item v-if="authStore.isAdmin" label="实际出货日期">
         <el-date-picker
           v-model="form.actual_ship_date"
           type="datetime"
@@ -70,7 +74,7 @@
         />
       </el-form-item>
 
-      <el-form-item label="内部备注">
+      <el-form-item v-if="authStore.isAdmin" label="内部备注">
         <el-input
           v-model="form.internal_notes"
           type="textarea"
@@ -79,7 +83,7 @@
         />
       </el-form-item>
 
-      <el-form-item label="订单图片">
+      <el-form-item v-if="authStore.isAdmin" label="订单图片">
         <!-- 粘贴提示区域 - 始终显示 -->
         <div class="paste-hint-box">
           <div class="paste-hint-content">
@@ -146,7 +150,7 @@
         </div>
       </el-form-item>
 
-      <el-form-item label="发货单号">
+      <el-form-item v-if="authStore.isAdmin" label="发货单号">
         <div style="width: 100%">
           <div v-if="form.shipping_tracking_numbers && form.shipping_tracking_numbers.length > 0" class="tracking-list">
             <div
@@ -198,6 +202,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { Delete, Upload, Picture, DocumentCopy, UploadFilled } from '@element-plus/icons-vue';
 import { useOrdersStore } from '../stores/orders';
 import { useAuthStore } from '../stores/auth';
+import { useConfigOptions } from '../composables/useConfigOptions';
 import type { Order } from '../types';
 
 interface Props {
@@ -219,6 +224,9 @@ const formRef = ref<FormInstance>();
 const loading = ref(false);
 const uploadAreaRef = ref<HTMLElement | null>(null);
 const isUploadAreaFocused = ref(false);
+
+// 配置选项
+const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
 
 const form = reactive<Partial<Order> & {
   images: string[];
@@ -465,6 +473,9 @@ const handleSubmit = async () => {
 };
 
 onMounted(() => {
+  // 加载配置选项
+  loadOrderTypes();
+  loadOrderStatuses();
   // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）
   const pasteHandler = (e: Event) => {
     handlePaste(e as ClipboardEvent);

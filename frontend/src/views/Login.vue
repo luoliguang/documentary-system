@@ -18,13 +18,13 @@
         :rules="loginRules"
         @submit.prevent="handleLogin"
       >
-        <el-form-item prop="username">
+        <el-form-item prop="account">
           <template #label>
-            <span class="form-label">账号/客户编号</span>
+            <span class="form-label">账号</span>
           </template>
           <el-input
-            v-model="loginForm.username"
-            placeholder="请输入您的账号"
+            v-model="loginForm.account"
+            placeholder="请输入您的登录账号"
             size="large"
             :prefix-icon="User"
             clearable
@@ -94,13 +94,14 @@ const showPassword = ref(false);
 const rememberMe = ref(false);
 
 const loginForm = reactive({
-  username: '',
+  account: '',
   password: '',
 });
 
 const loginRules: FormRules = {
-  username: [
+  account: [
     { required: true, message: '请输入账号', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_]{3,50}$/, message: '账号格式不正确，仅允许字母、数字、下划线，长度 3-50 个字符', trigger: 'blur' },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -115,7 +116,7 @@ const handleLogin = async () => {
     if (valid) {
       loading.value = true;
       try {
-        await authStore.login(loginForm.username, loginForm.password);
+        await authStore.login(loginForm.account, loginForm.password);
         ElMessage.success('登录成功');
         router.push('/');
       } catch (error: any) {

@@ -45,12 +45,15 @@
               placeholder="全部"
               clearable
               class="filter-select"
+              :key="`status-select-${orderStatuses.length}`"
             >
-              <el-option label="待处理" value="pending" />
-              <el-option label="生产中" value="in_production" />
-              <el-option label="已完成" value="completed" />
-              <el-option label="已发货" value="shipped" />
-              <el-option label="已取消" value="cancelled" />
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="status in orderStatuses"
+                :key="status.value"
+                :label="status.label"
+                :value="status.value"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="是否完成">
@@ -59,7 +62,9 @@
               placeholder="全部"
               clearable
               class="filter-select"
+              key="completed-select"
             >
+              <el-option label="全部" value="all" />
               <el-option label="已完成" :value="true" />
               <el-option label="未完成" :value="false" />
             </el-select>
@@ -117,11 +122,12 @@
               style="width: 100%"
               @change="handleStatusChange(row)"
             >
-              <el-option label="待处理" value="pending" />
-              <el-option label="生产中" value="in_production" />
-              <el-option label="已完成" value="completed" />
-              <el-option label="已发货" value="shipped" />
-              <el-option label="已取消" value="cancelled" />
+              <el-option
+                v-for="status in orderStatuses"
+                :key="status.value"
+                :label="status.label"
+                :value="status.value"
+              />
             </el-select>
             <el-tag v-else :type="getStatusType(row.status)">
               {{ getStatusText(row.status) }}
@@ -130,7 +136,13 @@
         </el-table-column>
         <el-table-column prop="is_completed" label="是否完成" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.is_completed ? 'success' : 'info'">
+            <el-switch
+              v-if="authStore.isAdmin || authStore.isProductionManager"
+              v-model="row.is_completed"
+              size="small"
+              @change="handleIsCompletedChange(row)"
+            />
+            <el-tag v-else :type="row.is_completed ? 'success' : 'info'">
               {{ row.is_completed ? '是' : '否' }}
             </el-tag>
           </template>
@@ -138,7 +150,7 @@
         <el-table-column prop="can_ship" label="可出货" width="100">
           <template #default="{ row }">
             <el-switch
-              v-if="authStore.isAdmin"
+              v-if="authStore.isAdmin || authStore.isProductionManager"
               v-model="row.can_ship"
               size="small"
               @change="handleCanShipChange(row)"
@@ -151,20 +163,24 @@
         <el-table-column prop="estimated_ship_date" label="预计出货日期" width="200">
           <template #default="{ row }">
             <el-date-picker
-              v-if="authStore.isAdmin"
-              :model-value="formatDateTimeForPicker(row.estimated_ship_date)"
-              type="datetime"
-              placeholder="选择日期时间"
+              v-if="authStore.isAdmin || authStore.isProductionManager"
+              v-model="row.estimated_ship_date"
+              type="date"
+              placeholder="选择日期"
               size="small"
               style="width: 100%"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DD"
+              format="YYYY-MM-DD"
               @change="(val: string | null) => handleEstimatedShipDateChange(row, val)"
             />
             <span v-else>{{ formatDate(row.estimated_ship_date) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="notes" label="备注" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="notes" label="备注" min-width="200">
+          <template #default="{ row }">
+            <span class="notes-text" :title="row.notes">{{ row.notes || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button
@@ -274,11 +290,12 @@
                   class="status-select-mobile"
                   @change="handleStatusChange(order)"
                 >
-                  <el-option label="待处理" value="pending" />
-                  <el-option label="生产中" value="in_production" />
-                  <el-option label="已完成" value="completed" />
-                  <el-option label="已发货" value="shipped" />
-                  <el-option label="已取消" value="cancelled" />
+                  <el-option
+                    v-for="status in orderStatuses"
+                    :key="status.value"
+                    :label="status.label"
+                    :value="status.value"
+                  />
                 </el-select>
                 <el-tag v-else :type="getStatusType(order.status)" size="small">
                   {{ getStatusText(order.status) }}
@@ -288,7 +305,13 @@
             <div class="card-row">
               <span class="label">是否完成：</span>
               <span class="value">
-                <el-tag :type="order.is_completed ? 'success' : 'info'" size="small">
+                <el-switch
+                  v-if="authStore.isAdmin || authStore.isProductionManager"
+                  v-model="order.is_completed"
+                  size="small"
+                  @change="handleIsCompletedChange(order)"
+                />
+                <el-tag v-else :type="order.is_completed ? 'success' : 'info'" size="small">
                   {{ order.is_completed ? '是' : '否' }}
                 </el-tag>
               </span>
@@ -297,7 +320,7 @@
               <span class="label">可出货：</span>
               <span class="value">
                 <el-switch
-                  v-if="authStore.isAdmin"
+                  v-if="authStore.isAdmin || authStore.isProductionManager"
                   v-model="order.can_ship"
                   size="small"
                   @change="handleCanShipChange(order)"
@@ -307,26 +330,28 @@
                 </el-tag>
               </span>
             </div>
-            <div class="card-row" v-if="order.estimated_ship_date">
+            <div class="card-row">
               <span class="label">预计出货日期：</span>
               <span class="value">
                 <el-date-picker
-                  v-if="authStore.isAdmin"
-                  :model-value="formatDateTimeForPicker(order.estimated_ship_date)"
-                  type="datetime"
-                  placeholder="选择日期时间"
+                  v-if="authStore.isAdmin || authStore.isProductionManager"
+                  v-model="order.estimated_ship_date"
+                  type="date"
+                  placeholder="选择日期"
                   size="small"
                   class="date-picker-mobile"
-                  value-format="YYYY-MM-DD HH:mm:ss"
-                  format="YYYY-MM-DD HH:mm"
+                  value-format="YYYY-MM-DD"
+                  format="YYYY-MM-DD"
                   @change="(val: string | null) => handleEstimatedShipDateChange(order, val)"
                 />
-                <span v-else>{{ formatDate(order.estimated_ship_date) }}</span>
+                <span v-else>{{ formatDate(order.estimated_ship_date || '') }}</span>
               </span>
             </div>
-            <div class="card-row" v-if="order.notes">
+            <div class="card-row">
               <span class="label">备注：</span>
-              <span class="value notes-text">{{ order.notes }}</span>
+              <span class="value">
+                <span class="notes-text">{{ order.notes || '-' }}</span>
+              </span>
             </div>
           </div>
 
@@ -428,9 +453,12 @@
             style="width: 100%"
             @change="handleOrderTypeChange"
           >
-            <el-option label="必发" value="required" />
-            <el-option label="散单" value="scattered" />
-            <el-option label="拍照" value="photo" />
+            <el-option
+              v-for="type in orderTypes"
+              :key="type.value"
+              :label="type.label"
+              :value="type.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="分配给">
@@ -444,7 +472,7 @@
             <el-option
               v-for="pm in productionManagers"
               :key="pm.id"
-              :label="pm.company_name || pm.username"
+              :label="pm.admin_notes || pm.username"
               :value="pm.id"
               :disabled="
                 assignForm.order_type &&
@@ -452,7 +480,7 @@
                 !pm.assigned_order_types.includes(assignForm.order_type)
               "
             >
-              <span>{{ pm.company_name || pm.username }}</span>
+              <span>{{ pm.admin_notes || pm.username }}</span>
               <span
                 v-if="
                   assignForm.order_type &&
@@ -479,20 +507,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, onUnmounted } from 'vue';
+import { ref, onMounted, reactive, onUnmounted, nextTick, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
 import { ordersApi } from '../../api/orders';
+import { useConfigOptions } from '../../composables/useConfigOptions';
+// @ts-ignore - Vue SFC with script setup
 import ReminderDialog from '../../components/ReminderDialog.vue';
+// @ts-ignore - Vue SFC with script setup
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
 import type { Order } from '../../types';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const ordersStore = useOrdersStore();
+
+// 配置选项
+const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
 
 // 移动端检测
 const isMobile = ref(window.innerWidth <= 768);
@@ -501,9 +535,41 @@ const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768;
 };
 
-onMounted(() => {
+// 监听选项加载，确保默认值正确显示
+watch(
+  () => orderStatuses.value.length,
+  (newLength) => {
+    if (newLength > 0 && (!filters.status || filters.status === '')) {
+      // 使用 nextTick 确保 DOM 更新后再设置值
+      nextTick(() => {
+        filters.status = 'all';
+      });
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(async () => {
   checkMobile();
   window.addEventListener('resize', checkMobile);
+  // 加载配置选项
+  await Promise.all([
+    loadOrderTypes(),
+    loadOrderStatuses(),
+  ]);
+  // 在选项加载完成后设置默认值
+  await nextTick();
+  // 设置默认值
+  if (!filters.status || filters.status === '') {
+    filters.status = 'all';
+  }
+  if (filters.is_completed === undefined || filters.is_completed === null) {
+    filters.is_completed = 'all';
+  }
+  // 再次等待 DOM 更新，确保下拉框能正确显示默认值
+  await nextTick();
+  // 初始加载订单列表
+  loadOrders();
 });
 
 onUnmounted(() => {
@@ -513,8 +579,8 @@ onUnmounted(() => {
 const filters = reactive({
   order_number: '',
   customer_order_number: '',
-  status: '',
-  is_completed: undefined as boolean | undefined,
+  status: 'all',
+  is_completed: 'all' as 'all' | boolean | undefined,
 });
 
 const currentPage = ref(1);
@@ -568,23 +634,7 @@ const formatDate = (date: string) => {
   }
 };
 
-// 将日期转换为日期时间选择器需要的格式
-const formatDateTimeForPicker = (date: string | null | undefined): string => {
-  if (!date) return '';
-  try {
-    const dateObj = new Date(date);
-    if (isNaN(dateObj.getTime())) return '';
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  } catch (error) {
-    return '';
-  }
-};
+// formatDateTimeForPicker 函数已移除，现在直接使用 v-model 绑定日期字符串
 
 const loadOrders = async () => {
   try {
@@ -593,8 +643,8 @@ const loadOrders = async () => {
       pageSize: pageSize.value,
       order_number: filters.order_number || undefined,
       customer_order_number: filters.customer_order_number || undefined,
-      status: filters.status || undefined,
-      is_completed: filters.is_completed,
+      status: filters.status === 'all' ? undefined : filters.status || undefined,
+      is_completed: filters.is_completed === 'all' ? undefined : (filters.is_completed as boolean | undefined),
     });
   } catch (error) {
     ElMessage.error('加载订单列表失败');
@@ -604,8 +654,8 @@ const loadOrders = async () => {
 const resetFilters = () => {
   filters.order_number = '';
   filters.customer_order_number = '';
-  filters.status = '';
-  filters.is_completed = undefined;
+  filters.status = 'all';
+  filters.is_completed = 'all';
   currentPage.value = 1;
   loadOrders();
 };
@@ -654,6 +704,24 @@ const handleStatusChange = async (row: Order) => {
   }
 };
 
+const handleIsCompletedChange = async (row: Order) => {
+  const originalIsCompleted = row.is_completed;
+  try {
+    const response = await ordersStore.updateOrder(row.id, { is_completed: row.is_completed });
+    // 更新当前行的数据，保留所有字段（包括 company_name 等关联字段）
+    const index = ordersStore.orders.findIndex((o) => o.id === row.id);
+    if (index !== -1 && response.order) {
+      // 合并更新后的数据，保留原有的关联字段
+      ordersStore.orders[index] = { ...ordersStore.orders[index], ...response.order };
+    }
+    ElMessage.success('完成状态已更新');
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error || '更新失败');
+    // 恢复原值
+    row.is_completed = originalIsCompleted;
+  }
+};
+
 const handleCanShipChange = async (row: Order) => {
   const originalCanShip = row.can_ship;
   try {
@@ -665,8 +733,8 @@ const handleCanShipChange = async (row: Order) => {
       ordersStore.orders[index] = { ...ordersStore.orders[index], ...response.order };
     }
     ElMessage.success('可出货状态已更新');
-  } catch (error) {
-    ElMessage.error('更新失败');
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error || '更新失败');
     // 恢复原值
     row.can_ship = originalCanShip;
   }
@@ -685,12 +753,14 @@ const handleEstimatedShipDateChange = async (row: Order, newValue: string | null
       ordersStore.orders[index] = { ...ordersStore.orders[index], ...response.order };
     }
     ElMessage.success('预计出货日期已更新');
-  } catch (error) {
-    ElMessage.error('更新失败');
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error || '更新失败');
     // 恢复原值
     row.estimated_ship_date = originalDate;
   }
 };
+
+// 备注编辑功能已移除，现在只在编辑对话框中编辑
 
 const handleQuickEdit = (row: Order) => {
   currentEditOrder.value = { ...row };
@@ -836,12 +906,29 @@ onMounted(() => {
 
 .filter-form :deep(.el-form-item) {
   margin-bottom: 15px;
+  /* 确保 el-select 在 inline-flex 模式下能正确显示 */
+  vertical-align: top;
+  /* 确保 form-item 有足够的宽度 */
+  flex: 0 0 auto;
+}
+
+.filter-form :deep(.el-form-item__content) {
+  /* 确保内容区域有足够的宽度，不会被压缩 */
+  min-width: 0;
+  flex: 0 0 auto;
+  /* 确保 el-select 能正确计算宽度 */
+  display: inline-block;
+  width: auto;
 }
 
 .filter-input,
 .filter-select {
   width: 100%;
   max-width: 200px;
+  /* 确保 select 组件有明确的宽度 */
+  min-width: 100px;
+  /* 确保 select 组件能正确显示 */
+  display: inline-block;
 }
 
 .filter-buttons {

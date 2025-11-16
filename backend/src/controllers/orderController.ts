@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { pool } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
+import { canUpdateOrderField, checkPermission } from '../utils/permissionCheck.js';
 
 // 获取订单列表（管理员查看所有，客户只能查看自己的）
 export const getOrders = async (req: AuthRequest, res: Response) => {
@@ -461,53 +462,174 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
     }
 
     const oldOrder = oldOrderResult.rows[0];
+
+    // 权限检查：非管理员需要检查权限
+    if (user.role !== 'admin') {
+      // 客户角色不能更新订单
+      if (user.role === 'customer') {
+        const canUpdate = await checkPermission(user.role, 'orders', 'can_update');
+        if (!canUpdate) {
+          return res.status(403).json({ error: '客户没有权限更新订单' });
+        }
+      }
+
+      // 生产跟单需要检查订单访问权限
+      if (user.role === 'production_manager') {
+        // 检查生产跟单是否有权限查看此订单
+        // 1. 检查订单是否分配给该生产跟单
+        // 2. 检查订单类型是否在分配的类型中
+        let hasPermission = false;
+        
+        // 检查是否分配给该生产跟单
+        if (oldOrder.assigned_to === user.userId) {
+          hasPermission = true;
+        } else {
+          // 检查订单类型是否在分配的类型中
+          try {
+            const userResult = await pool.query(
+              'SELECT assigned_order_types FROM users WHERE id = $1',
+              [user.userId]
+            );
+            if (userResult.rows.length > 0) {
+              const assignedTypes = userResult.rows[0].assigned_order_types || [];
+              if (Array.isArray(assignedTypes) && assignedTypes.includes(oldOrder.order_type)) {
+                hasPermission = true;
+              }
+            }
+          } catch (error) {
+            // 如果字段不存在，使用默认逻辑
+            console.warn('assigned_order_types 字段不存在，使用默认权限检查');
+          }
+        }
+
+        if (!hasPermission) {
+          return res.status(403).json({ error: '您没有权限更新此订单' });
+        }
+      }
+    }
+
     const updates: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
+    const disallowedFields: string[] = [];
 
+    // 动态权限检查：根据配置表检查每个字段的更新权限
     if (status !== undefined) {
-      updates.push(`status = $${paramIndex++}`);
-      values.push(status);
+      const canUpdate = user.role === 'admin' || await canUpdateOrderField(user.role, 'status');
+      if (canUpdate) {
+        updates.push(`status = $${paramIndex++}`);
+        values.push(status);
+      } else {
+        disallowedFields.push('status');
+      }
     }
+    
     if (is_completed !== undefined) {
-      updates.push(`is_completed = $${paramIndex++}`);
-      values.push(is_completed);
+      const canUpdate = user.role === 'admin' || await canUpdateOrderField(user.role, 'is_completed');
+      if (canUpdate) {
+        updates.push(`is_completed = $${paramIndex++}`);
+        values.push(is_completed);
+      } else {
+        disallowedFields.push('is_completed');
+      }
     }
+    
     if (can_ship !== undefined) {
-      updates.push(`can_ship = $${paramIndex++}`);
-      values.push(can_ship);
+      const canUpdate = user.role === 'admin' || await canUpdateOrderField(user.role, 'can_ship');
+      if (canUpdate) {
+        updates.push(`can_ship = $${paramIndex++}`);
+        values.push(can_ship);
+      } else {
+        disallowedFields.push('can_ship');
+      }
     }
+    
     if (estimated_ship_date !== undefined) {
-      updates.push(`estimated_ship_date = $${paramIndex++}`);
-      values.push(estimated_ship_date || null);
+      const canUpdate = user.role === 'admin' || await canUpdateOrderField(user.role, 'estimated_ship_date');
+      if (canUpdate) {
+        updates.push(`estimated_ship_date = $${paramIndex++}`);
+        values.push(estimated_ship_date || null);
+      } else {
+        disallowedFields.push('estimated_ship_date');
+      }
     }
+    
     if (actual_ship_date !== undefined) {
-      updates.push(`actual_ship_date = $${paramIndex++}`);
-      values.push(actual_ship_date || null);
+      const canUpdate = user.role === 'admin';
+      if (canUpdate) {
+        updates.push(`actual_ship_date = $${paramIndex++}`);
+        values.push(actual_ship_date || null);
+      } else {
+        disallowedFields.push('actual_ship_date');
+      }
     }
+    
     if (notes !== undefined) {
-      updates.push(`notes = $${paramIndex++}`);
-      values.push(notes);
+      const canUpdate = user.role === 'admin' || await canUpdateOrderField(user.role, 'notes');
+      if (canUpdate) {
+        updates.push(`notes = $${paramIndex++}`);
+        values.push(notes);
+      } else {
+        disallowedFields.push('notes');
+      }
     }
+    
     if (internal_notes !== undefined) {
-      updates.push(`internal_notes = $${paramIndex++}`);
-      values.push(internal_notes);
+      const canUpdate = user.role === 'admin';
+      if (canUpdate) {
+        updates.push(`internal_notes = $${paramIndex++}`);
+        values.push(internal_notes);
+      } else {
+        disallowedFields.push('internal_notes');
+      }
     }
+    
     if (customer_order_number !== undefined) {
-      updates.push(`customer_order_number = $${paramIndex++}`);
-      values.push(customer_order_number);
+      const canUpdate = user.role === 'admin';
+      if (canUpdate) {
+        updates.push(`customer_order_number = $${paramIndex++}`);
+        values.push(customer_order_number);
+      } else {
+        disallowedFields.push('customer_order_number');
+      }
     }
+    
     if (order_type !== undefined) {
-      updates.push(`order_type = $${paramIndex++}`);
-      values.push(order_type);
+      const canUpdate = user.role === 'admin' || await canUpdateOrderField(user.role, 'order_type');
+      if (canUpdate) {
+        updates.push(`order_type = $${paramIndex++}`);
+        values.push(order_type);
+      } else {
+        disallowedFields.push('order_type');
+      }
     }
+    
     if (images !== undefined) {
-      updates.push(`images = $${paramIndex++}`);
-      values.push(JSON.stringify(images));
+      const canUpdate = user.role === 'admin';
+      if (canUpdate) {
+        updates.push(`images = $${paramIndex++}`);
+        values.push(JSON.stringify(images));
+      } else {
+        disallowedFields.push('images');
+      }
     }
+    
     if (shipping_tracking_numbers !== undefined) {
-      updates.push(`shipping_tracking_numbers = $${paramIndex++}`);
-      values.push(JSON.stringify(shipping_tracking_numbers));
+      const canUpdate = user.role === 'admin';
+      if (canUpdate) {
+        updates.push(`shipping_tracking_numbers = $${paramIndex++}`);
+        values.push(JSON.stringify(shipping_tracking_numbers));
+      } else {
+        disallowedFields.push('shipping_tracking_numbers');
+      }
+    }
+
+    // 如果有不允许更新的字段，返回错误
+    if (disallowedFields.length > 0) {
+      console.error(`[订单更新] 权限不足: 用户 ${user.userId} (${user.role}) 尝试更新字段: ${disallowedFields.join(', ')}`);
+      return res.status(403).json({ 
+        error: `您没有权限更新以下字段: ${disallowedFields.join(', ')}。请在系统配置中检查您的权限设置。` 
+      });
     }
 
     if (updates.length === 0) {
@@ -704,11 +826,36 @@ export const getCustomers = async (req: AuthRequest, res: Response) => {
 // 获取所有生产跟单列表（仅管理员）
 export const getProductionManagers = async (req: AuthRequest, res: Response) => {
   try {
-    const result = await pool.query(
-      `SELECT id, username, company_name, contact_name, email, phone, assigned_order_types, created_at
-       FROM users WHERE role = 'production_manager' AND is_active = true
-       ORDER BY created_at DESC`
-    );
+    // 检查 admin_notes 字段是否存在
+    let hasAdminNotes = false;
+    try {
+      const checkResult = await pool.query(
+        `SELECT column_name FROM information_schema.columns 
+         WHERE table_name = 'users' AND column_name = 'admin_notes'`
+      );
+      hasAdminNotes = checkResult.rows.length > 0;
+    } catch (error) {
+      hasAdminNotes = false;
+    }
+
+    let result;
+    if (hasAdminNotes) {
+      result = await pool.query(
+        `SELECT id, username, company_name, contact_name, email, phone, assigned_order_types, admin_notes, created_at
+         FROM users WHERE role = 'production_manager' AND is_active = true
+         ORDER BY created_at DESC`
+      );
+    } else {
+      result = await pool.query(
+        `SELECT id, username, company_name, contact_name, email, phone, assigned_order_types, created_at
+         FROM users WHERE role = 'production_manager' AND is_active = true
+         ORDER BY created_at DESC`
+      );
+      // 为旧数据添加默认值
+      result.rows.forEach((row: any) => {
+        row.admin_notes = null;
+      });
+    }
 
     res.json({ productionManagers: result.rows });
   } catch (error) {
@@ -769,9 +916,14 @@ export const assignOrderToProductionManager = async (
       [assigned_to || null, id]
     );
 
-    // 获取完整的订单信息（包含关联的客户信息）
+    // 获取完整的订单信息（包含关联的客户信息和管理员备注）
     const fullOrderQuery = `
-      SELECT o.*, u.company_name, u.contact_name, u.phone as customer_phone, u.email as customer_email
+      SELECT o.*, 
+             u.company_name, 
+             u.contact_name, 
+             u.phone as customer_phone, 
+             u.email as customer_email,
+             u.admin_notes as customer_admin_notes
       FROM orders o
       LEFT JOIN users u ON o.customer_id = u.id
       WHERE o.id = $1
