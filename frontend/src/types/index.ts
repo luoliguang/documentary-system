@@ -30,9 +30,10 @@ export interface Order {
   customer_id: number;
   customer_code?: string;
   customer_order_number?: string;
-  status: 'pending' | 'in_production' | 'completed' | 'shipped' | 'cancelled';
+  status: 'pending' | 'assigned' | 'in_production' | 'completed' | 'shipped' | 'cancelled';
   order_type?: 'required' | 'scattered' | 'photo'; // 订单类型：必发、散单、拍照
   assigned_to?: number; // 分配给哪个生产跟单
+  assigned_to_name?: string; // 生产跟单名称
   is_completed: boolean;
   can_ship: boolean;
   estimated_ship_date?: string;
@@ -112,5 +113,19 @@ export interface LoginResponse {
   message: string;
   token: string;
   user: User;
+}
+
+// 通知类型
+export interface Notification {
+  id: number;
+  user_id: number;
+  type: 'reminder' | 'assignment';
+  title: string;
+  content: string | null;
+  related_id: number | null;
+  related_type: 'order' | 'reminder' | null;
+  is_read: boolean;
+  created_at: string;
+  read_at: string | null;
 }
 

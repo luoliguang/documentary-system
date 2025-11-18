@@ -25,6 +25,7 @@ export const useOrdersStore = defineStore('orders', () => {
     can_ship?: boolean;
     customer_id?: number;
     customer_code?: string;
+    company_name?: string;
   }) => {
     loading.value = true;
     try {
@@ -44,9 +45,13 @@ export const useOrdersStore = defineStore('orders', () => {
     loading.value = true;
     try {
       const response = await ordersApi.getOrderById(id);
+      if (!response.order) {
+        throw new Error('订单不存在');
+      }
       currentOrder.value = response.order;
       return response.order;
     } catch (error) {
+      currentOrder.value = null;
       throw error;
     } finally {
       loading.value = false;

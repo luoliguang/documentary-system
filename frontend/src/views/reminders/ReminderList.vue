@@ -2,7 +2,7 @@
   <div class="reminder-list">
     <el-card>
       <template #header>
-        <h3>催货记录</h3>
+        <h3>{{ authStore.isCustomer ? '催单记录' : '催货记录' }}</h3>
       </template>
 
       <!-- 桌面端：表格 -->
@@ -49,7 +49,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="message" label="催货消息" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="admin_response" label="管理员回复" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="admin_response" :label="authStore.isCustomer ? '管理员/生产跟单回复' : '管理员回复'" min-width="200" show-overflow-tooltip />
         <el-table-column prop="is_resolved" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.is_resolved ? 'success' : 'info'">
@@ -60,6 +60,12 @@
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">
             {{ formatDate(row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column v-if="authStore.isCustomer" prop="resolved_at" label="回复时间" width="180">
+          <template #default="{ row }">
+            <span v-if="row.resolved_at">{{ formatDate(row.resolved_at) }}</span>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
@@ -135,12 +141,16 @@
               <span class="value">{{ reminder.message }}</span>
             </div>
             <div class="card-row" v-if="reminder.admin_response">
-              <span class="label">管理员回复：</span>
+              <span class="label">{{ authStore.isCustomer ? '管理员/生产跟单回复：' : '管理员回复：' }}</span>
               <span class="value">{{ reminder.admin_response }}</span>
             </div>
             <div class="card-row">
               <span class="label">创建时间：</span>
               <span class="value">{{ formatDate(reminder.created_at) }}</span>
+            </div>
+            <div v-if="authStore.isCustomer && reminder.resolved_at" class="card-row">
+              <span class="label">回复时间：</span>
+              <span class="value">{{ formatDate(reminder.resolved_at) }}</span>
             </div>
           </div>
 
@@ -522,6 +532,11 @@ onUnmounted(() => {
   .desktop-table {
     display: block;
   }
+}
+
+.text-muted {
+  color: #909399;
+  font-size: 14px;
 }
 </style>
 

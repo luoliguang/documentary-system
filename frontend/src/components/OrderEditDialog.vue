@@ -11,6 +11,40 @@
       :rules="rules"
       label-width="120px"
     >
+      <el-form-item v-if="authStore.isAdmin" label="工厂订单编号" prop="order_number">
+        <el-input
+          v-model="form.order_number"
+          placeholder="请输入工厂订单编号"
+          clearable
+          style="width: 100%"
+        />
+      </el-form-item>
+
+      <el-form-item v-if="authStore.isAdmin" label="客户订单编号" prop="customer_order_number">
+        <el-input
+          v-model="form.customer_order_number"
+          placeholder="请输入客户订单编号"
+          clearable
+          style="width: 100%"
+        />
+      </el-form-item>
+
+      <el-form-item v-if="authStore.isAdmin" label="客户" prop="customer_id">
+        <el-select
+          v-model="form.customer_id"
+          placeholder="请选择客户"
+          filterable
+          style="width: 100%"
+        >
+          <el-option
+            v-for="customer in customers"
+            :key="customer.id"
+            :label="`${customer.company_name || customer.username} (${customer.customer_code})`"
+            :value="customer.id"
+          />
+        </el-select>
+      </el-form-item>
+
       <el-form-item v-if="authStore.isAdmin" label="订单类型" prop="order_type">
         <el-select v-model="form.order_type" placeholder="请选择订单类型" style="width: 100%">
           <el-option
@@ -44,11 +78,11 @@
       <el-form-item label="预计出货日期">
         <el-date-picker
           v-model="form.estimated_ship_date"
-          type="date"
-          placeholder="请选择预计出货日期"
+          type="datetime"
+          placeholder="请选择预计出货日期时间"
           style="width: 100%"
-          value-format="YYYY-MM-DD"
-          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          format="YYYY-MM-DD HH:mm"
           clearable
         />
       </el-form-item>
@@ -203,6 +237,7 @@ import { Delete, Upload, Picture, DocumentCopy, UploadFilled } from '@element-pl
 import { useOrdersStore } from '../stores/orders';
 import { useAuthStore } from '../stores/auth';
 import { useConfigOptions } from '../composables/useConfigOptions';
+import { ordersApi } from '../api/orders';
 import type { Order } from '../types';
 
 interface Props {
@@ -228,10 +263,19 @@ const isUploadAreaFocused = ref(false);
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
 
+// 客户列表
+const customers = ref<any[]>([]);
+
 const form = reactive<Partial<Order> & {
+  order_number?: string;
+  customer_order_number?: string;
+  customer_id?: number;
   images: string[];
   shipping_tracking_numbers: Array<{ type: string; number: string; label?: string }>;
 }>({
+  order_number: '',
+  customer_order_number: '',
+  customer_id: undefined,
   status: 'pending' as Order['status'],
   is_completed: false,
   can_ship: false,
@@ -284,7 +328,10 @@ const formatDateTimeForPicker = (date: string | null | undefined): string => {
 watch(
   () => props.modelValue,
   (newVal) => {
-    if (newVal && props.order) {
+    if (newVal && props.order && props.order.id) {
+      form.order_number = props.order.order_number || '';
+      form.customer_order_number = props.order.customer_order_number || '';
+      form.customer_id = props.order.customer_id;
       form.status = props.order.status;
       form.is_completed = props.order.is_completed;
       form.can_ship = props.order.can_ship;
@@ -453,7 +500,10 @@ const removeTrackingNumber = (index: number) => {
 };
 
 const handleSubmit = async () => {
-  if (!formRef.value || !props.order) return;
+  if (!formRef.value || !props.order || !props.order.id) {
+    ElMessage.warning('订单信息不完整，无法更新');
+    return;
+  }
 
   await formRef.value.validate(async (valid) => {
     if (valid) {
@@ -472,10 +522,23 @@ const handleSubmit = async () => {
   });
 };
 
+// 加载客户列表
+const loadCustomers = async () => {
+  if (!authStore.isAdmin) return; // 只有管理员需要加载客户列表
+  
+  try {
+    const response = await ordersApi.getCustomers();
+    customers.value = response.customers;
+  } catch (error) {
+    console.error('加载客户列表失败:', error);
+  }
+};
+
 onMounted(() => {
-  // 加载配置选项
+  // 加载配置选项和客户列表
   loadOrderTypes();
   loadOrderStatuses();
+  loadCustomers();
   // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）
   const pasteHandler = (e: Event) => {
     handlePaste(e as ClipboardEvent);

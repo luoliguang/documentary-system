@@ -35,5 +35,15 @@ export const remindersApi = {
   deleteReminder: (id: number): Promise<{ message: string }> => {
     return api.delete(`/reminders/${id}`);
   },
+
+  // 获取订单的催货统计信息（客户）
+  getOrderReminderStats: (orderId: number): Promise<{
+    total_count: number;
+    last_reminder_time: string | null;
+    next_reminder_time: string | null;
+    interval_hours: number;
+  }> => {
+    return api.get(`/reminders/order/${orderId}/stats`);
+  },
 };
 

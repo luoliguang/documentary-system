@@ -5,7 +5,24 @@
         <div class="card-header">
           <h3>订单详情</h3>
           <div class="header-actions">
-            <el-button @click="$router.back()">返回</el-button>
+            <el-button @click="handleBack">返回</el-button>
+            <el-button
+              v-if="authStore.isCustomer"
+              type="warning"
+              :disabled="order?.can_ship || (reminderStats.getReminderStats(order?.id || 0) && !reminderStats.canRemind(order?.id || 0))"
+              @click="handleReminder"
+            >
+              <span>催货</span>
+              <span v-if="reminderStats.getReminderStats(order?.id || 0)?.total_count" style="margin-left: 4px; font-size: 12px; opacity: 0.7;">
+                ({{ reminderStats.getReminderStats(order?.id || 0)?.total_count }}次)
+              </span>
+              <span v-if="reminderStats.getReminderStats(order?.id || 0) && !reminderStats.canRemind(order?.id || 0)" style="margin-left: 4px; font-size: 12px; color: #f56c6c;">
+                ({{ reminderStats.formatRemainingTime(reminderCountdown) }})
+              </span>
+              <span v-if="order?.can_ship" style="margin-left: 4px; font-size: 12px; opacity: 0.7;">
+                (已可出货)
+              </span>
+            </el-button>
             <el-button
               v-if="authStore.isAdmin && !order?.is_completed"
               type="success"
@@ -14,9 +31,9 @@
               完成任务
             </el-button>
             <el-button
-              v-if="authStore.isAdmin"
+              v-if="authStore.isAdmin && order"
               type="primary"
-              @click="editDialogVisible = true"
+              @click="handleEditOrder"
             >
               编辑订单
             </el-button>
@@ -24,29 +41,38 @@
         </div>
       </template>
 
-      <div v-if="order" class="detail-content">
+      <div v-if="order && order.id" class="detail-content">
         <!-- 基本信息 -->
         <el-descriptions title="基本信息" :column="2" border>
           <el-descriptions-item label="订单编号">
             {{ order.order_number }}
           </el-descriptions-item>
           <el-descriptions-item label="客户订单编号">
-            <span v-if="order.customer_order_number">{{ order.customer_order_number }}</span>
-            <el-button
-              v-else-if="authStore.isCustomer"
-              type="primary"
-              size="small"
-              link
-              @click="showCustomerNumberDialog = true"
-            >
-              提交订单编号
-            </el-button>
+            <div v-if="authStore.isCustomer" style="display: flex; align-items: center; gap: 8px;">
+              <span v-if="order.customer_order_number">{{ order.customer_order_number }}</span>
+              <el-button
+                type="primary"
+                size="small"
+                link
+                @click="handleEditCustomerNumber"
+              >
+                {{ order.customer_order_number ? '编辑' : '提交订单编号' }}
+              </el-button>
+            </div>
+            <span v-else-if="order.customer_order_number">{{ order.customer_order_number }}</span>
             <span v-else>-</span>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusType(order.status)">
               {{ getStatusText(order.status) }}
             </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="authStore.isAdmin || authStore.isProductionManager"
+            label="生产跟单"
+          >
+            <span v-if="order.assigned_to_name">{{ order.assigned_to_name }}</span>
+            <span v-else>未分配</span>
           </el-descriptions-item>
           <el-descriptions-item label="是否完成">
             <el-tag :type="order.is_completed ? 'success' : 'info'">
@@ -59,10 +85,10 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="预计出货日期">
-            {{ formatDateOnly(order.estimated_ship_date) }}
+            {{ formatDateOnly(order.estimated_ship_date || '') }}
           </el-descriptions-item>
           <el-descriptions-item label="实际出货日期">
-            {{ formatDateOnly(order.actual_ship_date) }}
+            {{ formatDateOnly(order.actual_ship_date || '') }}
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">
             {{ formatDate(order.created_at) }}
@@ -180,13 +206,32 @@
           <el-empty v-else description="暂无状态历史" />
         </div>
       </div>
+      <div v-else-if="!loading" class="empty-state">
+        <el-empty description="订单不存在或加载失败" />
+      </div>
     </el-card>
+
+    <!-- 跟进记录 -->
+    <FollowUpRecord
+      v-if="order && order.id"
+      :order-id="order.id"
+      :order="order"
+      @updated="loadOrder"
+    />
 
     <!-- 编辑订单对话框 -->
     <OrderEditDialog
+      v-if="order"
       v-model="editDialogVisible"
       :order="order"
       @success="loadOrder"
+    />
+
+    <!-- 催货对话框 -->
+    <ReminderDialog
+      v-model="reminderDialogVisible"
+      :order-id="order?.id || null"
+      @success="handleReminderSuccess"
     />
 
     <!-- 提交客户订单编号对话框 -->
@@ -219,8 +264,13 @@ import { Right, DocumentCopy } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
 import { ordersApi } from '../../api/orders';
+import { useReminderStats } from '../../composables/useReminderStats';
+// @ts-ignore - Vue SFC with script setup
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
-import type { ShippingTrackingNumber } from '../../types';
+// @ts-ignore - Vue SFC with script setup
+import FollowUpRecord from '../../components/FollowUpRecord.vue';
+// @ts-ignore - Vue SFC with script setup
+import ReminderDialog from '../../components/ReminderDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -230,7 +280,12 @@ const ordersStore = useOrdersStore();
 const loading = ref(false);
 const editDialogVisible = ref(false);
 const showCustomerNumberDialog = ref(false);
+const reminderDialogVisible = ref(false);
 const history = ref<any[]>([]);
+
+// 催货统计管理
+const reminderStats = useReminderStats();
+const reminderCountdown = ref<number>(0);
 
 const customerNumberForm = ref({
   customer_order_number: '',
@@ -238,9 +293,33 @@ const customerNumberForm = ref({
 
 const order = computed(() => ordersStore.currentOrder);
 
+const handleBack = () => {
+  // 如果历史记录中有上一页，则返回，否则跳转到订单列表
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push('/orders');
+  }
+};
+
+const handleEditOrder = () => {
+  if (!order.value || !order.value.id) {
+    ElMessage.warning('订单信息不完整，无法编辑');
+    return;
+  }
+  editDialogVisible.value = true;
+};
+
+const handleEditCustomerNumber = () => {
+  if (!order.value) return;
+  customerNumberForm.value.customer_order_number = order.value.customer_order_number || '';
+  showCustomerNumberDialog.value = true;
+};
+
 const getStatusType = (status: string) => {
   const map: Record<string, string> = {
     pending: 'info',
+    assigned: 'warning',
     in_production: 'warning',
     completed: 'success',
     shipped: 'success',
@@ -252,6 +331,7 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string) => {
   const map: Record<string, string> = {
     pending: '待处理',
+    assigned: '已分配',
     in_production: '生产中',
     completed: '已完成',
     shipped: '已发货',
@@ -318,6 +398,25 @@ const loadOrder = async () => {
     await ordersStore.fetchOrderById(id);
     const historyResponse = await ordersApi.getOrderStatusHistory(id);
     history.value = historyResponse.history;
+    
+    // 如果是客户，加载催货统计
+    if (authStore.isCustomer && order.value) {
+      await reminderStats.fetchReminderStats(id);
+      const stats = reminderStats.getReminderStats(id);
+      if (stats && stats.next_reminder_time) {
+        // 立即计算并设置初始剩余时间
+        const initialRemaining = reminderStats.getRemainingSeconds(id);
+        if (initialRemaining > 0) {
+          reminderCountdown.value = initialRemaining;
+        }
+        // 启动倒计时
+        reminderStats.startCountdown(id, (remaining) => {
+          reminderCountdown.value = remaining;
+        });
+      } else {
+        reminderCountdown.value = 0;
+      }
+    }
   } catch (error) {
     ElMessage.error('加载订单详情失败');
     router.push('/');
@@ -326,16 +425,49 @@ const loadOrder = async () => {
   }
 };
 
+const handleReminder = () => {
+  if (!order.value || !order.value.id) return;
+  
+  // 检查订单是否可以催货（已出货的订单不能催货）
+  if (order.value.can_ship) {
+    ElMessage.warning('订单已可出货，无需催货');
+    return;
+  }
+  
+  // 检查是否可以催货（节流检查）
+  if (!reminderStats.canRemind(order.value.id)) {
+    const remaining = reminderStats.getRemainingSeconds(order.value.id);
+    const formatted = reminderStats.formatRemainingTime(remaining);
+    ElMessage.warning(`催货过于频繁，请等待 ${formatted} 后再试`);
+    return;
+  }
+  
+  reminderDialogVisible.value = true;
+};
+
+const handleReminderSuccess = async () => {
+  if (order.value?.id) {
+    await reminderStats.refreshStats(order.value.id);
+    reminderStats.startCountdown(order.value.id, (remaining) => {
+      reminderCountdown.value = remaining;
+    });
+  }
+};
+
 const handleComplete = async () => {
-  if (!order.value) return;
+  if (!order.value || !order.value.id) {
+    ElMessage.warning('订单信息不完整，无法完成任务');
+    return;
+  }
 
   try {
-    await ElMessageBox.prompt('请输入完成备注（可选）', '完成任务', {
+    const result = await ElMessageBox.prompt('请输入完成备注（可选）', '完成任务', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       inputPlaceholder: '备注信息',
+      inputType: 'textarea',
     });
-    await ordersStore.completeOrder(order.value.id);
+    await ordersStore.completeOrder(order.value.id, result.value || undefined);
     ElMessage.success('订单已标记为完成');
     await loadOrder();
   } catch (error: any) {
@@ -437,6 +569,11 @@ h4 {
 .copy-icon {
   margin-left: 6px;
   font-size: 14px;
+}
+
+.empty-state {
+  padding: 40px 0;
+  text-align: center;
 }
 </style>
 

@@ -26,16 +26,55 @@
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      width="500px"
+      width="800px"
     >
-      <el-form :model="form" label-width="100px">
-        <el-form-item label="角色值" required>
-          <el-input v-model="form.value" placeholder="如：admin" :disabled="isEdit" />
-        </el-form-item>
-        <el-form-item label="角色名称" required>
-          <el-input v-model="form.label" placeholder="如：管理员" />
-        </el-form-item>
-      </el-form>
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="基本信息" name="basic">
+          <el-form :model="form" label-width="100px">
+            <el-form-item label="角色值" required>
+              <el-input v-model="form.value" placeholder="如：admin" :disabled="isEdit" />
+            </el-form-item>
+            <el-form-item label="角色名称" required>
+              <el-input v-model="form.label" placeholder="如：管理员" />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+        <el-tab-pane v-if="isEdit" label="权限配置" name="permissions">
+          <div v-loading="permissionsLoading" class="permissions-content">
+            <div v-for="(resourcePerms, resource) in rolePermissions" :key="resource" class="resource-section">
+              <h5>{{ getResourceLabel(resource) }}</h5>
+              <div class="permissions-list">
+                <el-checkbox
+                  v-for="(_value, permission) in resourcePerms"
+                  :key="permission"
+                  v-model="rolePermissions[resource][permission]"
+                  :label="getPermissionLabel(String(permission))"
+                />
+              </div>
+              <!-- 订单类型权限配置（仅当资源为 orders 时显示） -->
+              <div v-if="resource === 'orders'" class="order-types-section">
+                <h6>可操作的订单类型</h6>
+                <el-checkbox-group
+                  v-model="rolePermissions[resource].allowed_order_types"
+                  class="order-types-checkbox-group"
+                >
+                  <el-checkbox
+                    v-for="orderType in orderTypes"
+                    :key="orderType.value"
+                    :label="orderType.value"
+                  >
+                    {{ orderType.label }}
+                  </el-checkbox>
+                </el-checkbox-group>
+                <p class="order-types-tip">
+                  选择该角色可以查看和操作的订单类型。如果不选择任何类型，则默认可以操作所有类型。
+                </p>
+              </div>
+            </div>
+            <el-empty v-if="Object.keys(rolePermissions).length === 0" description="该角色暂无权限配置" />
+          </div>
+        </el-tab-pane>
+      </el-tabs>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit">确定</el-button>
@@ -45,10 +84,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { configsApi } from '../../../api/configs';
+import { useConfigOptions } from '../../../composables/useConfigOptions';
 
 interface Role {
   value: string;
@@ -60,6 +100,14 @@ const roles = ref<Role[]>([]);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const dialogTitle = ref('创建角色');
+const activeTab = ref('basic');
+const permissionsLoading = ref(false);
+const rolePermissions = ref<Record<string, any>>({});
+const allRolePermissions = ref<Record<string, any>>({});
+
+// 配置选项
+const { orderTypes, loadOrderTypes } = useConfigOptions();
+
 const form = ref<Role>({
   value: '',
   label: '',
@@ -68,7 +116,7 @@ const form = ref<Role>({
 const loadRoles = async () => {
   loading.value = true;
   try {
-    const response = await configsApi.getConfigByKey('roles');
+    const response = await configsApi.getConfigByKey('roles') as unknown as { config: Role[] };
     roles.value = response.config || [];
   } catch (error) {
     ElMessage.error('加载角色列表失败');
@@ -81,20 +129,95 @@ const handleCreate = () => {
   isEdit.value = false;
   dialogTitle.value = '创建角色';
   form.value = { value: '', label: '' };
+  activeTab.value = 'basic';
+  rolePermissions.value = {};
   dialogVisible.value = true;
+};
+
+const getResourceLabel = (resource: string) => {
+  const labels: Record<string, string> = {
+    orders: '订单',
+    reminders: '催货记录',
+    users: '用户管理',
+    configs: '系统配置',
+  };
+  return labels[resource] || resource;
+};
+
+const getPermissionLabel = (permission: string) => {
+  const labels: Record<string, string> = {
+    can_view_all: '查看全部',
+    can_view_assigned: '查看分配的',
+    can_view_own: '查看自己的',
+    can_create: '创建',
+    can_update: '更新',
+    can_delete: '删除',
+    can_update_completed: '更新完成状态',
+    can_update_can_ship: '更新可出货状态',
+    can_update_estimated_ship_date: '更新预计出货日期',
+    can_update_notes: '更新备注',
+    can_update_status: '更新状态',
+    can_update_order_type: '更新订单类型',
+    can_view_internal_notes: '查看内部备注',
+    can_assign: '分配',
+    can_view: '查看',
+  };
+  return labels[permission] || permission;
+};
+
+const loadRolePermissions = async (roleValue: string) => {
+  if (!roleValue) {
+    rolePermissions.value = {};
+    return;
+  }
+
+  permissionsLoading.value = true;
+  try {
+    // 加载所有角色权限配置
+    const response = await configsApi.getConfigByKey('role_permissions') as unknown as { config: Record<string, any> };
+    allRolePermissions.value = response.config || {};
+    
+    // 获取当前角色的权限
+    const currentRolePermissions = allRolePermissions.value[roleValue] || {};
+    rolePermissions.value = JSON.parse(JSON.stringify(currentRolePermissions));
+    
+    // 确保 orders 资源有 allowed_order_types 字段
+    if (rolePermissions.value.orders && !rolePermissions.value.orders.allowed_order_types) {
+      rolePermissions.value.orders.allowed_order_types = [];
+    }
+  } catch (error) {
+    ElMessage.error('加载权限配置失败');
+    rolePermissions.value = {};
+  } finally {
+    permissionsLoading.value = false;
+  }
 };
 
 const handleEdit = (row: Role) => {
   isEdit.value = true;
   dialogTitle.value = '编辑角色';
   form.value = { ...row };
+  activeTab.value = 'basic';
   dialogVisible.value = true;
+  // 加载该角色的权限配置
+  loadRolePermissions(row.value);
 };
+
+// 监听对话框打开，如果是编辑模式且切换到权限标签页，加载权限
+watch([dialogVisible, activeTab], ([visible, tab]) => {
+  if (visible && isEdit.value && tab === 'permissions' && form.value.value) {
+    if (Object.keys(rolePermissions.value).length === 0) {
+      loadRolePermissions(form.value.value);
+    }
+    // 加载订单类型选项
+    loadOrderTypes();
+  }
+});
 
 const handleDelete = async (row: Role) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除角色"${row.label}"吗？`,
+      `确定要删除角色"${row.label}"吗？删除后该角色的权限配置也将被清除。`,
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -103,8 +226,25 @@ const handleDelete = async (row: Role) => {
       }
     );
 
+    // 1. 删除角色
     const updatedRoles = roles.value.filter((r) => r.value !== row.value);
     await configsApi.updateConfig('roles', { config_value: updatedRoles });
+
+    // 2. 删除该角色的权限配置
+    try {
+      const response = await configsApi.getConfigByKey('role_permissions') as unknown as { config: Record<string, any> };
+      const currentPermissions = response.config || {};
+      if (currentPermissions[row.value]) {
+        delete currentPermissions[row.value];
+        await configsApi.updateConfig('role_permissions', {
+          config_value: currentPermissions,
+        });
+      }
+    } catch (error) {
+      console.warn('删除角色权限配置失败:', error);
+      // 权限删除失败不影响角色删除
+    }
+
     ElMessage.success('删除成功');
     loadRoles();
   } catch (error: any) {
@@ -121,6 +261,7 @@ const handleSubmit = async () => {
   }
 
   try {
+    // 1. 更新角色列表
     let updatedRoles: Role[];
     if (isEdit.value) {
       updatedRoles = roles.value.map((r) =>
@@ -135,6 +276,22 @@ const handleSubmit = async () => {
     }
 
     await configsApi.updateConfig('roles', { config_value: updatedRoles });
+
+    // 2. 如果是编辑模式且修改了权限，更新权限配置
+    if (isEdit.value && Object.keys(rolePermissions.value).length > 0) {
+      // 加载最新的权限配置
+      const response = await configsApi.getConfigByKey('role_permissions') as unknown as { config: Record<string, any> };
+      const currentPermissions = response.config || {};
+      
+      // 更新当前角色的权限
+      currentPermissions[form.value.value] = JSON.parse(JSON.stringify(rolePermissions.value));
+      
+      // 保存权限配置
+      await configsApi.updateConfig('role_permissions', {
+        config_value: currentPermissions,
+      });
+    }
+
     ElMessage.success(isEdit.value ? '更新成功' : '创建成功');
     dialogVisible.value = false;
     loadRoles();
@@ -145,6 +302,7 @@ const handleSubmit = async () => {
 
 onMounted(() => {
   loadRoles();
+  loadOrderTypes();
 });
 </script>
 
@@ -155,6 +313,59 @@ onMounted(() => {
 
 .header-actions {
   margin-bottom: 20px;
+}
+
+.permissions-content {
+  padding: 10px 0;
+}
+
+.resource-section {
+  margin-bottom: 20px;
+}
+
+.resource-section h5 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.permissions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding: 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.order-types-section {
+  margin-top: 20px;
+  padding: 15px;
+  background: #fafafa;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.order-types-section h6 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.order-types-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.order-types-tip {
+  margin: 10px 0 0 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 </style>
 

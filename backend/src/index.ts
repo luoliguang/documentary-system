@@ -8,6 +8,8 @@ import reminderRoutes from './routes/reminderRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import configRoutes from './routes/configRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import followUpRoutes from './routes/followUpRoutes.js';
 
 const app = express();
 
@@ -34,6 +36,8 @@ app.use('/api/reminders', reminderRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/configs', configRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/follow-ups', followUpRoutes);
 
 // 404 处理
 app.use((req, res) => {

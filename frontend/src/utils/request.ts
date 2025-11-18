@@ -41,7 +41,16 @@ api.interceptors.response.use(
           router.push('/login');
           break;
         case 403:
-          ElMessage.error('权限不足');
+          // 检查是否是账号被禁用的错误
+          const errorMessage = data?.error || data?.message || '';
+          if (errorMessage.includes('账号已被禁用') || errorMessage.includes('禁用')) {
+            ElMessage.error('账号已被禁用，请联系管理员');
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            router.push('/login');
+          } else {
+            ElMessage.error(errorMessage || '权限不足');
+          }
           break;
         case 404:
           ElMessage.error('请求的资源不存在');

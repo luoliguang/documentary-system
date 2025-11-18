@@ -1,6 +1,12 @@
 import { Response } from 'express';
 import { pool } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
+import {
+  createNotificationsForUsers,
+  getAllAdminUserIds,
+  createNotification,
+} from '../services/notificationService.js';
+import { configService } from '../services/configService.js';
 
 // 催货（客户功能）
 export const createDeliveryReminder = async (
@@ -25,6 +31,42 @@ export const createDeliveryReminder = async (
       return res.status(404).json({ error: '订单不存在或无权访问' });
     }
 
+    // 检查催货节流：获取最近一次催货记录
+    const lastReminderResult = await pool.query(
+      `SELECT created_at FROM delivery_reminders 
+       WHERE order_id = $1 AND customer_id = $2 
+       ORDER BY created_at DESC LIMIT 1`,
+      [order_id, user.userId]
+    );
+
+    if (lastReminderResult.rows.length > 0) {
+      // 获取催货间隔配置（默认2小时）
+      const intervalHours = await configService.getConfig('reminder_min_interval_hours') || 2;
+      const lastReminderTime = new Date(lastReminderResult.rows[0].created_at);
+      const now = new Date();
+      const hoursSinceLastReminder = (now.getTime() - lastReminderTime.getTime()) / (1000 * 60 * 60);
+
+      if (hoursSinceLastReminder < intervalHours) {
+        const remainingHours = intervalHours - hoursSinceLastReminder;
+        const nextReminderTime = new Date(lastReminderTime.getTime() + intervalHours * 60 * 60 * 1000);
+        return res.status(429).json({
+          error: `催货过于频繁，请等待 ${remainingHours.toFixed(1)} 小时后再试`,
+          next_reminder_time: nextReminderTime.toISOString(),
+          interval_hours: intervalHours,
+        });
+      }
+    }
+
+    // 获取订单信息用于通知
+    const orderInfoResult = await pool.query(
+      `SELECT o.order_number, o.customer_order_number, u.company_name, u.contact_name
+       FROM orders o
+       LEFT JOIN users u ON o.customer_id = u.id
+       WHERE o.id = $1`,
+      [order_id]
+    );
+    const orderInfo = orderInfoResult.rows[0];
+
     // 创建催货记录
     const result = await pool.query(
       `INSERT INTO delivery_reminders (order_id, customer_id, reminder_type, message)
@@ -32,6 +74,29 @@ export const createDeliveryReminder = async (
        RETURNING *`,
       [order_id, user.userId, reminder_type, message || null]
     );
+
+    // 向所有管理员发送催单通知
+    try {
+      const adminUserIds = await getAllAdminUserIds();
+      if (adminUserIds.length > 0) {
+        const reminderTypeText = reminder_type === 'urgent' ? '紧急催单' : '催单';
+        const title = `${reminderTypeText}：${orderInfo.order_number || '订单'}`;
+        const content = message
+          ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。\n催单消息：${message}`
+          : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。`;
+
+        await createNotificationsForUsers(adminUserIds, {
+          type: 'reminder',
+          title,
+          content,
+          related_id: order_id, // 使用订单ID,方便在订单列表中显示
+          related_type: 'order', // 使用order类型,统一处理
+        });
+      }
+    } catch (notificationError) {
+      // 通知创建失败不影响催货记录的创建，只记录日志
+      console.error('创建催单通知失败:', notificationError);
+    }
 
     res.status(201).json({
       message: '催货申请已提交',
@@ -183,6 +248,7 @@ export const getDeliveryReminders = async (
 // 管理员回复催货（仅管理员）
 export const respondToReminder = async (req: AuthRequest, res: Response) => {
   try {
+    const user = req.user!;
     const { id } = req.params;
     const { admin_response, is_resolved = true } = req.body;
 
@@ -195,6 +261,8 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
     if (reminderResult.rows.length === 0) {
       return res.status(404).json({ error: '催货记录不存在' });
     }
+
+    const reminder = reminderResult.rows[0];
 
     // 更新催货记录
     const result = await pool.query(
@@ -210,9 +278,51 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
       ]
     );
 
+    const updatedReminder = result.rows[0];
+
+    // 向客户发送回复通知
+    try {
+      // 获取订单信息
+      const orderResult = await pool.query(
+        `SELECT o.order_number, o.customer_order_number, u.company_name, u.contact_name
+         FROM orders o
+         LEFT JOIN users u ON o.customer_id = u.id
+         WHERE o.id = $1`,
+        [reminder.order_id]
+      );
+      const orderInfo = orderResult.rows[0];
+
+      // 获取回复者信息
+      const responderResult = await pool.query(
+        `SELECT username, company_name, role FROM users WHERE id = $1`,
+        [user.userId]
+      );
+      const responderInfo = responderResult.rows[0];
+      const responderName = responderInfo.company_name || responderInfo.username || '管理员';
+      const responderRole = responderInfo.role === 'production_manager' ? '生产跟单' : '管理员';
+
+      // 创建通知给客户
+      const title = `${responderRole}已回复您的催单：${orderInfo.order_number || '订单'}`;
+      const content = admin_response
+        ? `${responderName}（${responderRole}）已回复您的催单：\n${admin_response}`
+        : `${responderName}（${responderRole}）已处理您的催单。`;
+
+      await createNotification({
+        user_id: reminder.customer_id,
+        type: 'reminder',
+        title,
+        content,
+        related_id: reminder.order_id,
+        related_type: 'order',
+      });
+    } catch (notificationError) {
+      // 通知创建失败不影响回复操作，只记录日志
+      console.error('创建回复通知失败:', notificationError);
+    }
+
     res.json({
       message: '回复成功',
-      reminder: result.rows[0],
+      reminder: updatedReminder,
     });
   } catch (error) {
     console.error('回复催货错误:', error);
@@ -312,6 +422,58 @@ export const deleteReminder = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('删除催货记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 获取订单的催货统计信息（客户查看自己的订单）
+export const getOrderReminderStats = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user!;
+    const { order_id } = req.params;
+
+    // 验证订单属于当前客户
+    const orderResult = await pool.query(
+      'SELECT id FROM orders WHERE id = $1 AND customer_id = $2',
+      [order_id, user.userId]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: '订单不存在或无权访问' });
+    }
+
+    // 获取催货统计
+    const statsResult = await pool.query(
+      `SELECT 
+         COUNT(*) as total_count,
+         MAX(created_at) as last_reminder_time
+       FROM delivery_reminders 
+       WHERE order_id = $1 AND customer_id = $2`,
+      [order_id, user.userId]
+    );
+
+    const stats = statsResult.rows[0];
+    const intervalHours = await configService.getConfig('reminder_min_interval_hours') || 2;
+
+    // 计算下次可催货时间
+    let nextReminderTime: string | null = null;
+    if (stats.last_reminder_time) {
+      const lastTime = new Date(stats.last_reminder_time);
+      const nextTime = new Date(lastTime.getTime() + intervalHours * 60 * 60 * 1000);
+      nextReminderTime = nextTime.toISOString();
+    }
+
+    res.json({
+      total_count: parseInt(stats.total_count || '0'),
+      last_reminder_time: stats.last_reminder_time || null,
+      next_reminder_time: nextReminderTime,
+      interval_hours: intervalHours,
+    });
+  } catch (error) {
+    console.error('获取催货统计错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 };

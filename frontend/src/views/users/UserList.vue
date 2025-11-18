@@ -217,9 +217,13 @@
           label="订单类型权限"
         >
           <el-checkbox-group v-model="form.assigned_order_types">
-            <el-checkbox label="required">必发</el-checkbox>
-            <el-checkbox label="scattered">散单</el-checkbox>
-            <el-checkbox label="photo">拍照</el-checkbox>
+            <el-checkbox
+              v-for="orderType in orderTypes"
+              :key="orderType.value"
+              :label="orderType.value"
+            >
+              {{ orderType.label }}
+            </el-checkbox>
           </el-checkbox-group>
         </el-form-item>
         <el-form-item label="管理员备注">
@@ -288,7 +292,7 @@ const pagination = ref({
 });
 
 // 配置选项
-const { roles, loadRoles } = useConfigOptions();
+const { roles, orderTypes, loadRoles, loadOrderTypes } = useConfigOptions();
 
 const isMobile = ref(window.innerWidth <= 768);
 
@@ -591,6 +595,7 @@ const handlePageChange = () => {
 onMounted(() => {
   loadUsers();
   loadRoles();
+  loadOrderTypes();
 });
 </script>
 

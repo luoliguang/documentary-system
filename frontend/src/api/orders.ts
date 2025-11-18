@@ -11,6 +11,7 @@ interface OrderQueryParams {
   can_ship?: boolean;
   customer_id?: number;
   customer_code?: string;
+  company_name?: string;
 }
 
 export const ordersApi = {

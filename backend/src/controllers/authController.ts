@@ -76,14 +76,14 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
     let result;
     try {
       result = await pool.query(
-        'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, assigned_order_types, admin_notes, created_at, updated_at FROM users WHERE id = $1',
+        'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, assigned_order_types, admin_notes, is_active, created_at, updated_at FROM users WHERE id = $1',
         [userId]
       );
     } catch (error: any) {
       // 如果字段不存在，使用旧的查询（向后兼容）
       if (error.code === '42703') {
         result = await pool.query(
-          'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, created_at, updated_at FROM users WHERE id = $1',
+          'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, is_active, created_at, updated_at FROM users WHERE id = $1',
           [userId]
         );
         // 为旧数据添加默认值
@@ -98,6 +98,11 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 检查用户是否被禁用（虽然 authenticateToken 已经检查过，但这里再次确认）
+    if (!result.rows[0].is_active) {
+      return res.status(403).json({ error: '账号已被禁用' });
     }
 
     res.json({ user: result.rows[0] });

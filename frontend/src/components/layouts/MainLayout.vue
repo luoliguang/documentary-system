@@ -4,16 +4,34 @@
       <div class="header-left">
         <el-button
           class="menu-toggle-btn"
-          :icon="Menu"
           circle
           @click="drawerVisible = true"
-        />
+        >
+          <el-icon>
+            <Menu />
+          </el-icon>
+        </el-button>
         <el-icon :size="24" color="#409eff" class="logo-icon">
-          <Document />
+          <EditPen />
         </el-icon>
         <span class="logo-text">跟单系统</span>
       </div>
       <div class="header-right">
+        <!-- 通知图标 -->
+        <el-badge
+          v-if="authStore.isAdmin || authStore.isProductionManager || authStore.isCustomer"
+          :value="notificationsStore.unreadCount"
+          :hidden="notificationsStore.unreadCount === 0"
+          class="notification-badge"
+        >
+          <el-button
+            circle
+            @click="notificationCenterVisible = true"
+            class="notification-btn"
+          >
+            <el-icon><Bell /></el-icon>
+          </el-button>
+        </el-badge>
         <el-dropdown @command="handleCommand">
           <span class="user-info">
             <el-icon><User /></el-icon>
@@ -50,9 +68,26 @@
             <el-icon><List /></el-icon>
             <span>订单列表</span>
           </el-menu-item>
-          <el-menu-item index="/reminders">
+          <el-menu-item
+            v-if="authStore.isAdmin"
+            index="/reminders"
+          >
             <el-icon><Bell /></el-icon>
             <span>催货记录</span>
+          </el-menu-item>
+          <el-menu-item
+            v-else-if="authStore.isProductionManager"
+            index="/follow-ups"
+          >
+            <el-icon><Bell /></el-icon>
+            <span>跟进记录</span>
+          </el-menu-item>
+          <el-menu-item
+            v-else-if="authStore.isCustomer"
+            index="/reminders"
+          >
+            <el-icon><Bell /></el-icon>
+            <span>催单记录</span>
           </el-menu-item>
           <el-menu-item
             v-if="authStore.isAdmin"
@@ -100,9 +135,26 @@
             <el-icon><List /></el-icon>
             <span>订单列表</span>
           </el-menu-item>
-          <el-menu-item index="/reminders">
+          <el-menu-item
+            v-if="authStore.isAdmin"
+            index="/reminders"
+          >
             <el-icon><Bell /></el-icon>
             <span>催货记录</span>
+          </el-menu-item>
+          <el-menu-item
+            v-else-if="authStore.isProductionManager"
+            index="/follow-ups"
+          >
+            <el-icon><Bell /></el-icon>
+            <span>跟进记录</span>
+          </el-menu-item>
+          <el-menu-item
+            v-else-if="authStore.isCustomer"
+            index="/reminders"
+          >
+            <el-icon><Bell /></el-icon>
+            <span>催单记录</span>
           </el-menu-item>
           <el-menu-item
             v-if="authStore.isAdmin"
@@ -136,35 +188,34 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <!-- 通知中心 -->
+    <NotificationCenter v-model="notificationCenterVisible" />
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import {
-  Document,
-  User,
-  ArrowDown,
-  List,
-  Bell,
-  Plus,
-  Menu,
-  Setting,
-  Tools,
-} from '@element-plus/icons-vue';
+import { Bell, User } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
+import { useNotificationsStore } from '../../stores/notifications';
+// @ts-ignore - Vue SFC with script setup
+import NotificationCenter from '../NotificationCenter.vue';
 
 const route = useRoute();
 const authStore = useAuthStore();
+const notificationsStore = useNotificationsStore();
 
 const activeMenu = computed(() => route.path);
 const drawerVisible = ref(false);
+const notificationCenterVisible = ref(false);
 
 const handleCommand = (command: string) => {
   if (command === 'logout') {
     authStore.logout();
+    notificationsStore.reset();
     ElMessage.success('已退出登录');
   }
 };
@@ -175,6 +226,21 @@ const handleMenuSelect = () => {
     drawerVisible.value = false;
   }
 };
+
+// 启动通知轮询
+onMounted(() => {
+  if (
+    authStore.isAuthenticated &&
+    (authStore.isAdmin || authStore.isProductionManager || authStore.isCustomer)
+  ) {
+    notificationsStore.startPolling();
+  }
+});
+
+// 停止通知轮询
+onUnmounted(() => {
+  notificationsStore.stopPolling();
+});
 </script>
 
 <style scoped>
@@ -217,6 +283,20 @@ const handleMenuSelect = () => {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.notification-badge {
+  margin-right: 5px;
+}
+
+.notification-btn {
+  border: none;
+  background: transparent;
+}
+
+.notification-btn:hover {
+  background: #f5f7fa;
 }
 
 .user-info {

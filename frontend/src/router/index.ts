@@ -37,6 +37,12 @@ const router = createRouter({
           component: () => import('../views/reminders/ReminderList.vue'),
         },
         {
+          path: 'follow-ups',
+          name: 'FollowUpDashboard',
+          component: () => import('../views/followups/FollowUpDashboard.vue'),
+          meta: { requiresProduction: true },
+        },
+        {
           path: 'profile',
           name: 'Profile',
           component: () => import('../views/users/Profile.vue'),
@@ -73,6 +79,10 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    next('/');
+    return;
+  }
+  if (to.meta.requiresProduction && !authStore.isProductionManager) {
     next('/');
     return;
   }

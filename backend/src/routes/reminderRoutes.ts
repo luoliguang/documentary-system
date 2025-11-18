@@ -5,6 +5,7 @@ import {
   respondToReminder,
   assignReminderToProductionManager,
   deleteReminder,
+  getOrderReminderStats,
 } from '../controllers/reminderController.js';
 import {
   authenticateToken,
@@ -22,6 +23,9 @@ router.post('/', requireCustomer, createDeliveryReminder);
 
 // 获取催货记录（管理员、生产跟单和客户都可以访问，但返回结果不同）
 router.get('/', getDeliveryReminders);
+
+// 获取订单的催货统计信息（客户）
+router.get('/order/:order_id/stats', requireCustomer, getOrderReminderStats);
 
 // 管理员回复催货
 router.patch('/:id/respond', requireAdmin, respondToReminder);

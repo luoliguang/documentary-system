@@ -1,4 +1,4 @@
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { configsApi } from '../api/configs';
 
 interface Option {
@@ -25,6 +25,7 @@ export function useConfigOptions() {
 
   const defaultOrderStatuses: Option[] = [
     { label: '待处理', value: 'pending' },
+    { label: '已分配', value: 'assigned' },
     { label: '生产中', value: 'in_production' },
     { label: '已完成', value: 'completed' },
     { label: '已发货', value: 'shipped' },
@@ -44,8 +45,8 @@ export function useConfigOptions() {
     if (orderTypes.value.length > 0) return; // 已加载，不重复加载
     
     try {
-      const response = await configsApi.getOrderTypeOptions();
-      orderTypes.value = response.orderTypes || defaultOrderTypes;
+      const { data } = await configsApi.getOrderTypeOptions();
+      orderTypes.value = data?.orderTypes || defaultOrderTypes;
     } catch (error) {
       console.error('加载订单类型选项失败:', error);
       orderTypes.value = defaultOrderTypes;
@@ -59,8 +60,8 @@ export function useConfigOptions() {
     if (orderStatuses.value.length > 0) return; // 已加载，不重复加载
     
     try {
-      const response = await configsApi.getOrderStatusOptions();
-      orderStatuses.value = response.orderStatuses || defaultOrderStatuses;
+      const { data } = await configsApi.getOrderStatusOptions();
+      orderStatuses.value = data?.orderStatuses || defaultOrderStatuses;
     } catch (error) {
       console.error('加载订单状态选项失败:', error);
       orderStatuses.value = defaultOrderStatuses;
@@ -74,8 +75,8 @@ export function useConfigOptions() {
     if (roles.value.length > 0) return; // 已加载，不重复加载
     
     try {
-      const response = await configsApi.getRoleOptions();
-      roles.value = response.roles || defaultRoles;
+      const { data } = await configsApi.getRoleOptions();
+      roles.value = data?.roles || defaultRoles;
     } catch (error) {
       console.error('加载角色选项失败:', error);
       roles.value = defaultRoles;

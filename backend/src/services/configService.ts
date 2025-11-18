@@ -171,8 +171,9 @@ class ConfigService {
         { value: 'shipped', label: '已发货' },
         { value: 'cancelled', label: '已取消' },
       ],
+      reminder_min_interval_hours: 2, // 催货最小间隔（小时），默认2小时
     };
-    return defaults[key] || null;
+    return defaults[key] !== undefined ? defaults[key] : null;
   }
 }
 

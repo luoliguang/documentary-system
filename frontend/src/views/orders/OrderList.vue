@@ -69,6 +69,22 @@
               <el-option label="未完成" :value="false" />
             </el-select>
           </el-form-item>
+          <el-form-item v-if="authStore.isAdmin" label="客户公司">
+            <el-select
+              v-model="filters.company_name"
+              placeholder="请选择客户公司"
+              clearable
+              filterable
+              class="filter-select"
+            >
+              <el-option
+                v-for="company in companyNames"
+                :key="company"
+                :label="company"
+                :value="company"
+              />
+            </el-select>
+          </el-form-item>
           <el-form-item class="filter-buttons">
             <el-button type="primary" @click="loadOrders">查询</el-button>
             <el-button @click="resetFilters">重置</el-button>
@@ -84,7 +100,25 @@
         class="desktop-table"
         style="width: 100%"
       >
-        <el-table-column prop="order_number" label="工厂订单编号" width="180" />
+        <el-table-column prop="order_number" label="工厂订单编号" width="180">
+          <template #default="{ row }">
+            <div class="order-number-cell">
+              <span>{{ row.order_number }}</span>
+              <el-badge
+                v-if="getOrderReminderCount(row.id) > 0"
+                :value="getOrderReminderCount(row.id)"
+                type="danger"
+                class="reminder-badge"
+              />
+              <el-badge
+                v-if="getOrderAssignmentCount(row.id) > 0"
+                :value="getOrderAssignmentCount(row.id)"
+                type="primary"
+                class="assignment-badge"
+              />
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="制单表" width="80" align="center">
           <template #default="{ row }">
             <el-image
@@ -134,6 +168,15 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column
+          v-if="authStore.isAdmin || authStore.isProductionManager"
+          label="生产跟单"
+          width="160"
+        >
+          <template #default="{ row }">
+            <span>{{ row.assigned_to_name || '未分配' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="is_completed" label="是否完成" width="100">
           <template #default="{ row }">
             <el-switch
@@ -160,20 +203,20 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="estimated_ship_date" label="预计出货日期" width="200">
+        <el-table-column prop="estimated_ship_date" label="预计出货日期" width="220">
           <template #default="{ row }">
             <el-date-picker
               v-if="authStore.isAdmin || authStore.isProductionManager"
               v-model="row.estimated_ship_date"
-              type="date"
-              placeholder="选择日期"
+              type="datetime"
+              placeholder="选择日期时间"
               size="small"
               style="width: 100%"
-              value-format="YYYY-MM-DD"
-              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              format="YYYY-MM-DD HH:mm"
               @change="(val: string | null) => handleEstimatedShipDateChange(row, val)"
             />
-            <span v-else>{{ formatDate(row.estimated_ship_date) }}</span>
+            <span v-else>{{ formatDateTime(row.estimated_ship_date) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="notes" label="备注" min-width="200">
@@ -219,13 +262,23 @@
               分配
             </el-button>
             <el-button
-              v-if="authStore.isCustomer && !row.can_ship"
+              v-if="authStore.isCustomer"
               type="warning"
               size="small"
               link
+              :disabled="row.can_ship || (reminderStats.getReminderStats(row.id) && !reminderStats.canRemind(row.id))"
               @click="handleReminder(row.id)"
             >
-              催货
+              <span>催货</span>
+              <span v-if="reminderStats.getReminderStats(row.id)?.total_count" style="margin-left: 4px; font-size: 11px; opacity: 0.7;">
+                ({{ reminderStats.getReminderStats(row.id)?.total_count }}次)
+              </span>
+              <span v-if="reminderStats.getReminderStats(row.id) && !reminderStats.canRemind(row.id)" style="margin-left: 4px; font-size: 11px; color: #f56c6c;">
+                ({{ reminderStats.formatRemainingTime(reminderCountdowns.get(row.id) || 0) }})
+              </span>
+              <span v-if="row.can_ship" style="margin-left: 4px; font-size: 11px; opacity: 0.7;">
+                (已可出货)
+              </span>
             </el-button>
             <el-button
               v-if="authStore.isAdmin"
@@ -268,7 +321,21 @@
               <div v-else class="no-image-mobile">-</div>
             </div>
             <div class="card-title-section">
-              <div class="order-number">{{ order.order_number }}</div>
+              <div class="order-number-cell">
+                <span class="order-number">{{ order.order_number }}</span>
+                <el-badge
+                  v-if="getOrderReminderCount(order.id) > 0"
+                  :value="getOrderReminderCount(order.id)"
+                  type="danger"
+                  class="reminder-badge"
+                />
+                <el-badge
+                  v-if="getOrderAssignmentCount(order.id) > 0"
+                  :value="getOrderAssignmentCount(order.id)"
+                  type="primary"
+                  class="assignment-badge"
+                />
+              </div>
               <div class="customer-order-number" v-if="order.customer_order_number">
                 {{ order.customer_order_number }}
               </div>
@@ -301,6 +368,10 @@
                   {{ getStatusText(order.status) }}
                 </el-tag>
               </span>
+            </div>
+            <div v-if="authStore.isAdmin || authStore.isProductionManager" class="card-row">
+              <span class="label">生产跟单：</span>
+              <span class="value">{{ order.assigned_to_name || '未分配' }}</span>
             </div>
             <div class="card-row">
               <span class="label">是否完成：</span>
@@ -336,15 +407,15 @@
                 <el-date-picker
                   v-if="authStore.isAdmin || authStore.isProductionManager"
                   v-model="order.estimated_ship_date"
-                  type="date"
-                  placeholder="选择日期"
+                  type="datetime"
+                  placeholder="选择日期时间"
                   size="small"
                   class="date-picker-mobile"
-                  value-format="YYYY-MM-DD"
-                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD HH:mm:ss"
+                  format="YYYY-MM-DD HH:mm"
                   @change="(val: string | null) => handleEstimatedShipDateChange(order, val)"
                 />
-                <span v-else>{{ formatDate(order.estimated_ship_date || '') }}</span>
+                <span v-else>{{ formatDateTime(order.estimated_ship_date || '') }}</span>
               </span>
             </div>
             <div class="card-row">
@@ -388,12 +459,22 @@
               分配
             </el-button>
             <el-button
-              v-if="authStore.isCustomer && !order.can_ship"
+              v-if="authStore.isCustomer"
               type="warning"
               size="small"
+              :disabled="order.can_ship || (reminderStats.getReminderStats(order.id) && !reminderStats.canRemind(order.id))"
               @click="handleReminder(order.id)"
             >
-              催货
+              <span>催货</span>
+              <span v-if="reminderStats.getReminderStats(order.id)?.total_count" style="margin-left: 4px; font-size: 11px; opacity: 0.7;">
+                ({{ reminderStats.getReminderStats(order.id)?.total_count }}次)
+              </span>
+              <span v-if="reminderStats.getReminderStats(order.id) && !reminderStats.canRemind(order.id)" style="margin-left: 4px; font-size: 11px; color: #f56c6c;">
+                ({{ reminderStats.formatRemainingTime(reminderCountdowns.get(order.id) || 0) }})
+              </span>
+              <span v-if="order.can_ship" style="margin-left: 4px; font-size: 11px; opacity: 0.7;">
+                (已可出货)
+              </span>
             </el-button>
             <el-button
               v-if="authStore.isAdmin"
@@ -513,8 +594,10 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
+import { useNotificationsStore } from '../../stores/notifications';
 import { ordersApi } from '../../api/orders';
 import { useConfigOptions } from '../../composables/useConfigOptions';
+import { useReminderStats } from '../../composables/useReminderStats';
 // @ts-ignore - Vue SFC with script setup
 import ReminderDialog from '../../components/ReminderDialog.vue';
 // @ts-ignore - Vue SFC with script setup
@@ -524,9 +607,16 @@ import type { Order } from '../../types';
 const router = useRouter();
 const authStore = useAuthStore();
 const ordersStore = useOrdersStore();
+const notificationsStore = useNotificationsStore();
+
+// 订单相关的未读通知映射
+const orderNotifications = ref<Map<number, { reminder: number; assignment: number }>>(new Map());
 
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
+
+// 客户公司列表
+const companyNames = ref<string[]>([]);
 
 // 移动端检测
 const isMobile = ref(window.innerWidth <= 768);
@@ -549,13 +639,33 @@ watch(
   { immediate: true }
 );
 
+// 加载客户公司列表
+const loadCompanyNames = async () => {
+  if (!authStore.isAdmin) return; // 只有管理员需要加载客户公司列表
+  
+  try {
+    const response = await ordersApi.getCustomers();
+    // 提取所有唯一的公司名称，过滤掉空值
+    const companies = new Set<string>();
+    response.customers.forEach((customer: any) => {
+      if (customer.company_name && customer.company_name.trim()) {
+        companies.add(customer.company_name.trim());
+      }
+    });
+    companyNames.value = Array.from(companies).sort();
+  } catch (error) {
+    console.error('加载客户公司列表失败:', error);
+  }
+};
+
 onMounted(async () => {
   checkMobile();
   window.addEventListener('resize', checkMobile);
-  // 加载配置选项
+  // 加载配置选项和客户公司列表
   await Promise.all([
     loadOrderTypes(),
     loadOrderStatuses(),
+    loadCompanyNames(),
   ]);
   // 在选项加载完成后设置默认值
   await nextTick();
@@ -581,6 +691,7 @@ const filters = reactive({
   customer_order_number: '',
   status: 'all',
   is_completed: 'all' as 'all' | boolean | undefined,
+  company_name: '',
 });
 
 const currentPage = ref(1);
@@ -597,9 +708,14 @@ const assignForm = reactive({
   order_type: 'required' as 'required' | 'scattered' | 'photo',
 });
 
+// 催货统计管理
+const reminderStats = useReminderStats();
+const reminderCountdowns = ref<Map<number, number>>(new Map());
+
 const getStatusType = (status: string) => {
   const map: Record<string, string> = {
     pending: 'info',
+    assigned: 'warning',
     in_production: 'warning',
     completed: 'success',
     shipped: 'success',
@@ -611,6 +727,7 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string) => {
   const map: Record<string, string> = {
     pending: '待处理',
+    assigned: '已分配',
     in_production: '生产中',
     completed: '已完成',
     shipped: '已发货',
@@ -619,10 +736,47 @@ const getStatusText = (status: string) => {
   return map[status] || status;
 };
 
-const formatDate = (date: string) => {
-  if (!date) return '-';
+// 规范化日期时间字符串，确保格式为 YYYY-MM-DD HH:mm:ss
+const normalizeDateTime = (date: string | null | undefined): string | null => {
+  if (!date) return null;
+  // 如果已经是 YYYY-MM-DD HH:mm:ss 格式，直接返回
+  if (date.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+    return date;
+  }
+  // 如果只有日期部分 YYYY-MM-DD，添加默认时间
+  if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return `${date} 00:00:00`;
+  }
+  // 如果是 ISO 格式或其他格式，解析并转换为本地时间字符串
   try {
     const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) return date;
+    // 使用本地时间，避免时区转换
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  } catch (error) {
+    return date;
+  }
+};
+
+const formatDateTime = (date: string) => {
+  if (!date) return '-';
+  try {
+    // 如果已经是 YYYY-MM-DD HH:mm:ss 格式，直接解析
+    if (date.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+      const [datePart, timePart] = date.split(' ');
+      const [year, month, day] = datePart.split('-');
+      const [hours, minutes] = timePart.split(':');
+      return `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+    // 否则使用 Date 对象解析（避免时区转换）
+    const dateObj = new Date(date);
+    // 使用本地时间，避免时区转换
     const year = dateObj.getFullYear();
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
     const day = String(dateObj.getDate()).padStart(2, '0');
@@ -645,10 +799,85 @@ const loadOrders = async () => {
       customer_order_number: filters.customer_order_number || undefined,
       status: filters.status === 'all' ? undefined : filters.status || undefined,
       is_completed: filters.is_completed === 'all' ? undefined : (filters.is_completed as boolean | undefined),
+      company_name: filters.company_name || undefined,
     });
+    
+    // 如果是客户，加载每个订单的催货统计
+    if (authStore.isCustomer) {
+      const promises = ordersStore.orders
+        .map(order => reminderStats.fetchReminderStats(order.id));
+      await Promise.all(promises);
+      
+      // 启动倒计时（立即设置初始值，避免显示0）
+      ordersStore.orders.forEach(order => {
+        const stats = reminderStats.getReminderStats(order.id);
+        if (stats && stats.next_reminder_time) {
+          // 立即计算并设置初始剩余时间
+          const initialRemaining = reminderStats.getRemainingSeconds(order.id);
+          if (initialRemaining > 0) {
+            reminderCountdowns.value.set(order.id, initialRemaining);
+          }
+          // 启动倒计时
+          reminderStats.startCountdown(order.id, (remaining) => {
+            reminderCountdowns.value.set(order.id, remaining);
+          });
+        } else {
+          // 如果没有限制，设置为0
+          reminderCountdowns.value.set(order.id, 0);
+        }
+      });
+    }
+    
+    // 加载订单相关的未读通知
+    if (authStore.isAdmin || authStore.isProductionManager) {
+      await loadOrderNotifications();
+    }
   } catch (error) {
     ElMessage.error('加载订单列表失败');
   }
+};
+
+// 加载订单相关的未读通知
+const loadOrderNotifications = async () => {
+  try {
+    const response = await notificationsStore.fetchNotifications({
+      page: 1,
+      pageSize: 100, // 获取足够多的未读通知
+      is_read: false,
+    });
+    
+    // 构建订单通知映射
+    const notificationMap = new Map<number, { reminder: number; assignment: number }>();
+    
+    response.notifications.forEach((notification) => {
+      if (notification.related_type === 'order' && notification.related_id) {
+        const orderId = notification.related_id;
+        if (!notificationMap.has(orderId)) {
+          notificationMap.set(orderId, { reminder: 0, assignment: 0 });
+        }
+        const counts = notificationMap.get(orderId)!;
+        if (notification.type === 'reminder') {
+          counts.reminder++;
+        } else if (notification.type === 'assignment') {
+          counts.assignment++;
+        }
+      }
+    });
+    
+    orderNotifications.value = notificationMap;
+  } catch (error) {
+    console.error('加载订单通知失败:', error);
+  }
+};
+
+// 获取订单的催单提醒数量
+const getOrderReminderCount = (orderId: number): number => {
+  return orderNotifications.value.get(orderId)?.reminder || 0;
+};
+
+// 获取订单的分配提醒数量
+const getOrderAssignmentCount = (orderId: number): number => {
+  return orderNotifications.value.get(orderId)?.assignment || 0;
 };
 
 const resetFilters = () => {
@@ -656,6 +885,7 @@ const resetFilters = () => {
   filters.customer_order_number = '';
   filters.status = 'all';
   filters.is_completed = 'all';
+  filters.company_name = '';
   currentPage.value = 1;
   loadOrders();
 };
@@ -681,10 +911,44 @@ const handleComplete = async (id: number) => {
   }
 };
 
-const handleReminder = (orderId: number) => {
+const handleReminder = async (orderId: number) => {
+  // 检查订单是否可以催货（已出货的订单不能催货）
+  const order = ordersStore.orders.find(o => o.id === orderId);
+  if (order && order.can_ship) {
+    ElMessage.warning('订单已可出货，无需催货');
+    return;
+  }
+  
+  // 检查是否可以催货（节流检查）
+  if (!reminderStats.canRemind(orderId)) {
+    const remaining = reminderStats.getRemainingSeconds(orderId);
+    const formatted = reminderStats.formatRemainingTime(remaining);
+    ElMessage.warning(`催货过于频繁，请等待 ${formatted} 后再试`);
+    return;
+  }
   selectedOrderId.value = orderId;
   reminderDialogVisible.value = true;
 };
+
+// 监听催货成功，刷新通知和统计
+watch(reminderDialogVisible, async (newVal) => {
+  if (!newVal) {
+    // 催货对话框关闭后，刷新通知和统计
+    if (authStore.isAdmin || authStore.isProductionManager) {
+      loadOrderNotifications();
+      notificationsStore.fetchUnreadCount();
+    }
+    // 如果是客户，刷新催货统计
+    if (authStore.isCustomer && selectedOrderId.value) {
+      await reminderStats.refreshStats(selectedOrderId.value);
+      // 重新启动倒计时
+      reminderStats.startCountdown(selectedOrderId.value, (remaining) => {
+        reminderCountdowns.value.set(selectedOrderId.value!, remaining);
+      });
+      selectedOrderId.value = null;
+    }
+  }
+});
 
 const handleStatusChange = async (row: Order) => {
   const originalStatus = row.status;
@@ -743,14 +1007,33 @@ const handleCanShipChange = async (row: Order) => {
 const handleEstimatedShipDateChange = async (row: Order, newValue: string | null) => {
   const originalDate = row.estimated_ship_date;
   try {
+    // 确保日期时间字符串格式正确，避免时区转换
+    let dateValue = newValue;
+    if (dateValue) {
+      // 确保格式为 YYYY-MM-DD HH:mm:ss，如果只有日期部分，添加默认时间
+      if (dateValue.length === 10) {
+        dateValue = `${dateValue} 00:00:00`;
+      }
+      // 规范化日期时间字符串
+      dateValue = normalizeDateTime(dateValue) || dateValue;
+    }
+    
+    // 立即更新本地值（乐观更新），避免时区转换问题
+    row.estimated_ship_date = dateValue || undefined;
+    
     const response = await ordersStore.updateOrder(row.id, {
-      estimated_ship_date: newValue || undefined,
+      estimated_ship_date: dateValue || undefined,
     });
     // 更新当前行的数据，保留所有字段（包括 company_name 等关联字段）
     const index = ordersStore.orders.findIndex((o) => o.id === row.id);
     if (index !== -1 && response.order) {
       // 合并更新后的数据，保留原有的关联字段
       ordersStore.orders[index] = { ...ordersStore.orders[index], ...response.order };
+      // 确保显示的值与选择的值一致（避免时区转换导致的值变化）
+      if (dateValue) {
+        ordersStore.orders[index].estimated_ship_date = dateValue;
+        row.estimated_ship_date = dateValue;
+      }
     }
     ElMessage.success('预计出货日期已更新');
   } catch (error: any) {
@@ -825,6 +1108,11 @@ const submitAssign = async () => {
     ElMessage.success('订单分配成功');
     assignDialogVisible.value = false;
     await loadOrders();
+    
+    // 刷新通知
+    if (authStore.isAdmin || authStore.isProductionManager) {
+      notificationsStore.fetchUnreadCount();
+    }
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || '分配失败');
   }
@@ -946,6 +1234,17 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.order-number-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reminder-badge,
+.assignment-badge {
+  margin-left: 4px;
 }
 
 .order-thumbnail {

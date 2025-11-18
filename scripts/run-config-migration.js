@@ -48,7 +48,7 @@ async function runMigration() {
     console.log('');
     
     // 读取迁移脚本
-    const migrationPath = path.join(__dirname, '../database/migrations/002_add_system_configs.sql');
+    const migrationPath = path.join(__dirname, '../database/migrations/005_add_order_follow_ups.sql');
     if (!fs.existsSync(migrationPath)) {
       throw new Error(`迁移脚本不存在: ${migrationPath}`);
     }
