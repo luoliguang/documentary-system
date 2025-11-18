@@ -48,7 +48,7 @@ async function runMigration() {
     console.log('');
     
     // 读取迁移脚本
-    const migrationPath = path.join(__dirname, '../database/migrations/005_add_order_follow_ups.sql');
+    const migrationPath = path.join(__dirname, '../database/migrations/007_add_reminder_soft_delete.sql');
     if (!fs.existsSync(migrationPath)) {
       throw new Error(`迁移脚本不存在: ${migrationPath}`);
     }

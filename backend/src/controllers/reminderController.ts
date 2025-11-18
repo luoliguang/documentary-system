@@ -121,8 +121,19 @@ export const getDeliveryReminders = async (
 
     if (user.role === 'admin') {
       // 管理员查看所有催货记录
-      const { order_id, is_resolved, page = 1, pageSize = 20 } = req.query;
-      let whereConditions: string[] = [];
+      const { 
+        order_id, 
+        order_number,
+        customer_order_number,
+        company_name,
+        reminder_type,
+        is_resolved, 
+        start_date,
+        end_date,
+        page = 1, 
+        pageSize = 20 
+      } = req.query;
+      let whereConditions: string[] = ['dr.is_deleted = false'];
       params = [];
       let paramIndex = 1;
 
@@ -131,9 +142,39 @@ export const getDeliveryReminders = async (
         params.push(order_id);
       }
 
+      if (order_number) {
+        whereConditions.push(`o.order_number ILIKE $${paramIndex++}`);
+        params.push(`%${order_number}%`);
+      }
+
+      if (customer_order_number) {
+        whereConditions.push(`o.customer_order_number ILIKE $${paramIndex++}`);
+        params.push(`%${customer_order_number}%`);
+      }
+
+      if (company_name) {
+        whereConditions.push(`u.company_name ILIKE $${paramIndex++}`);
+        params.push(`%${company_name}%`);
+      }
+
+      if (reminder_type) {
+        whereConditions.push(`dr.reminder_type = $${paramIndex++}`);
+        params.push(reminder_type);
+      }
+
       if (is_resolved !== undefined) {
         whereConditions.push(`dr.is_resolved = $${paramIndex++}`);
         params.push(is_resolved === 'true');
+      }
+
+      if (start_date) {
+        whereConditions.push(`dr.created_at >= $${paramIndex++}`);
+        params.push(start_date);
+      }
+
+      if (end_date) {
+        whereConditions.push(`dr.created_at <= $${paramIndex++}`);
+        params.push(end_date);
       }
 
       const whereClause =
@@ -148,6 +189,7 @@ export const getDeliveryReminders = async (
         SELECT 
           dr.*,
           o.order_number,
+          o.customer_order_number,
           o.customer_code,
           o.images,
           u.company_name,
@@ -159,15 +201,49 @@ export const getDeliveryReminders = async (
         ORDER BY dr.created_at DESC
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
       `;
+
+      // 添加总数查询
+      const countQuery = `
+        SELECT COUNT(*) as total 
+        FROM delivery_reminders dr
+        LEFT JOIN orders o ON dr.order_id = o.id
+        LEFT JOIN users u ON dr.customer_id = u.id
+        ${whereClause}
+      `;
+      const countResult = await pool.query(
+        countQuery,
+        params.slice(0, params.length - 2)
+      );
+      const result = await pool.query(query, params);
+
+      res.json({
+        reminders: result.rows,
+        pagination: {
+          total: parseInt(countResult.rows[0].total),
+          page: Number(page),
+          pageSize: Number(pageSize),
+          totalPages: Math.ceil(
+            parseInt(countResult.rows[0].total) / Number(pageSize)
+          ),
+        },
+      });
+      return;
     } else if (user.role === 'production_manager') {
       // 生产跟单：只能查看管理员派送的催货任务
-      const { order_id, is_resolved, page = 1, pageSize = 20 } = req.query;
-      let whereConditions: string[] = [];
+      const { 
+        order_id,
+        order_number,
+        customer_order_number,
+        reminder_type,
+        is_resolved,
+        start_date,
+        end_date,
+        page = 1, 
+        pageSize = 20 
+      } = req.query;
+      let whereConditions: string[] = [`dr.is_admin_assigned = true`, `dr.is_deleted = false`];
       params = [];
       let paramIndex = 1;
-
-      // 只能查看管理员派送的任务
-      whereConditions.push(`dr.is_admin_assigned = true`);
       
       // 如果指定了assigned_to，则只显示分配给自己的
       whereConditions.push(`(dr.assigned_to IS NULL OR dr.assigned_to = $${paramIndex++})`);
@@ -178,9 +254,34 @@ export const getDeliveryReminders = async (
         params.push(order_id);
       }
 
+      if (order_number) {
+        whereConditions.push(`o.order_number ILIKE $${paramIndex++}`);
+        params.push(`%${order_number}%`);
+      }
+
+      if (customer_order_number) {
+        whereConditions.push(`o.customer_order_number ILIKE $${paramIndex++}`);
+        params.push(`%${customer_order_number}%`);
+      }
+
+      if (reminder_type) {
+        whereConditions.push(`dr.reminder_type = $${paramIndex++}`);
+        params.push(reminder_type);
+      }
+
       if (is_resolved !== undefined) {
         whereConditions.push(`dr.is_resolved = $${paramIndex++}`);
         params.push(is_resolved === 'true');
+      }
+
+      if (start_date) {
+        whereConditions.push(`dr.created_at >= $${paramIndex++}`);
+        params.push(start_date);
+      }
+
+      if (end_date) {
+        whereConditions.push(`dr.created_at <= $${paramIndex++}`);
+        params.push(end_date);
       }
 
       const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
@@ -191,6 +292,7 @@ export const getDeliveryReminders = async (
         SELECT 
           dr.*,
           o.order_number,
+          o.customer_order_number,
           o.customer_code,
           o.images,
           u.company_name,
@@ -203,7 +305,13 @@ export const getDeliveryReminders = async (
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
       `;
 
-      const countQuery = `SELECT COUNT(*) as total FROM delivery_reminders dr ${whereClause}`;
+      const countQuery = `
+        SELECT COUNT(*) as total 
+        FROM delivery_reminders dr
+        LEFT JOIN orders o ON dr.order_id = o.id
+        LEFT JOIN users u ON dr.customer_id = u.id
+        ${whereClause}
+      `;
       const countResult = await pool.query(
         countQuery,
         params.slice(0, params.length - 2)
@@ -224,17 +332,61 @@ export const getDeliveryReminders = async (
       return;
     } else {
       // 客户只能查看自己的催货记录
+      const { 
+        order_number,
+        customer_order_number,
+        reminder_type,
+        is_resolved,
+        start_date,
+        end_date
+      } = req.query;
+      let whereConditions: string[] = [`dr.customer_id = $1`, `dr.is_deleted = false`];
+      params = [user.userId];
+      let paramIndex = 2;
+
+      if (order_number) {
+        whereConditions.push(`o.order_number ILIKE $${paramIndex++}`);
+        params.push(`%${order_number}%`);
+      }
+
+      if (customer_order_number) {
+        whereConditions.push(`o.customer_order_number ILIKE $${paramIndex++}`);
+        params.push(`%${customer_order_number}%`);
+      }
+
+      if (reminder_type) {
+        whereConditions.push(`dr.reminder_type = $${paramIndex++}`);
+        params.push(reminder_type);
+      }
+
+      if (is_resolved !== undefined) {
+        whereConditions.push(`dr.is_resolved = $${paramIndex++}`);
+        params.push(is_resolved === 'true');
+      }
+
+      if (start_date) {
+        whereConditions.push(`dr.created_at >= $${paramIndex++}`);
+        params.push(start_date);
+      }
+
+      if (end_date) {
+        whereConditions.push(`dr.created_at <= $${paramIndex++}`);
+        params.push(end_date);
+      }
+
+      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+
       query = `
         SELECT 
           dr.*,
           o.order_number,
+          o.customer_order_number,
           o.images
         FROM delivery_reminders dr
         LEFT JOIN orders o ON dr.order_id = o.id
-        WHERE dr.customer_id = $1
+        ${whereClause}
         ORDER BY dr.created_at DESC
       `;
-      params = [user.userId];
     }
 
     const result = await pool.query(query, params);
@@ -252,7 +404,7 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { admin_response, is_resolved = true } = req.body;
 
-    // 检查催货记录是否存在
+    // 检查催货记录是否存在（包括已删除的记录）
     const reminderResult = await pool.query(
       'SELECT * FROM delivery_reminders WHERE id = $1',
       [id]
@@ -263,6 +415,11 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
     }
 
     const reminder = reminderResult.rows[0];
+
+    // 已删除的记录不能回复
+    if (reminder.is_deleted) {
+      return res.status(400).json({ error: '催货记录已被删除，无法回复' });
+    }
 
     // 更新催货记录
     const result = await pool.query(
@@ -345,7 +502,7 @@ export const assignReminderToProductionManager = async (
       return res.status(403).json({ error: '无权操作' });
     }
 
-    // 检查催货记录是否存在
+    // 检查催货记录是否存在（包括已删除的记录）
     const reminderResult = await pool.query(
       'SELECT * FROM delivery_reminders WHERE id = $1',
       [id]
@@ -353,6 +510,13 @@ export const assignReminderToProductionManager = async (
 
     if (reminderResult.rows.length === 0) {
       return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    const reminder = reminderResult.rows[0];
+
+    // 已删除的记录不能派送
+    if (reminder.is_deleted) {
+      return res.status(400).json({ error: '催货记录已被删除，无法派送' });
     }
 
     // 如果指定了assigned_to，验证该用户是否为生产跟单
@@ -388,13 +552,14 @@ export const assignReminderToProductionManager = async (
   }
 };
 
-// 删除催货记录
-export const deleteReminder = async (req: AuthRequest, res: Response) => {
+// 编辑催货消息（仅创建者）
+export const updateReminderMessage = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
     const { id } = req.params;
+    const { message } = req.body;
 
-    // 检查催货记录是否存在
+    // 检查催货记录是否存在（包括已删除的记录）
     const reminderResult = await pool.query(
       'SELECT * FROM delivery_reminders WHERE id = $1',
       [id]
@@ -406,6 +571,119 @@ export const deleteReminder = async (req: AuthRequest, res: Response) => {
 
     const reminder = reminderResult.rows[0];
 
+    // 已删除的记录不能编辑
+    if (reminder.is_deleted) {
+      return res.status(400).json({ error: '催货记录已被删除，无法编辑' });
+    }
+
+    // 只有创建者（客户）可以编辑催货消息
+    if (reminder.customer_id !== user.userId) {
+      return res.status(403).json({ error: '无权编辑此催货消息' });
+    }
+
+    // 已处理的催单不能编辑
+    if (reminder.is_resolved) {
+      return res.status(403).json({ error: '已处理的催单不能编辑' });
+    }
+
+    // 更新催货消息
+    const result = await pool.query(
+      `UPDATE delivery_reminders
+       SET message = $1
+       WHERE id = $2
+       RETURNING *`,
+      [message || null, id]
+    );
+
+    res.json({
+      message: '催货消息更新成功',
+      reminder: result.rows[0],
+    });
+  } catch (error) {
+    console.error('编辑催货消息错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 编辑管理员回复（管理员和生产跟单）
+export const updateAdminResponse = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+    const { admin_response } = req.body;
+
+    // 只有管理员和生产跟单可以编辑回复
+    if (user.role !== 'admin' && user.role !== 'production_manager') {
+      return res.status(403).json({ error: '无权编辑管理员回复' });
+    }
+
+    // 检查催货记录是否存在（包括已删除的记录）
+    const reminderResult = await pool.query(
+      'SELECT * FROM delivery_reminders WHERE id = $1',
+      [id]
+    );
+
+    if (reminderResult.rows.length === 0) {
+      return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    const reminder = reminderResult.rows[0];
+
+    // 已删除的记录不能编辑
+    if (reminder.is_deleted) {
+      return res.status(400).json({ error: '催货记录已被删除，无法编辑' });
+    }
+
+    // 生产跟单只能编辑分配给自己的催货任务的回复
+    if (user.role === 'production_manager') {
+      if (!reminder.is_admin_assigned || 
+          (reminder.assigned_to !== null && reminder.assigned_to !== user.userId)) {
+        return res.status(403).json({ error: '无权编辑此回复' });
+      }
+    }
+
+    // 更新管理员回复
+    const result = await pool.query(
+      `UPDATE delivery_reminders
+       SET admin_response = $1
+       WHERE id = $2
+       RETURNING *`,
+      [admin_response || null, id]
+    );
+
+    res.json({
+      message: '管理员回复更新成功',
+      reminder: result.rows[0],
+    });
+  } catch (error) {
+    console.error('编辑管理员回复错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+// 删除催货记录
+export const deleteReminder = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+
+    // 检查催货记录是否存在（包括已删除的记录）
+    const reminderResult = await pool.query(
+      'SELECT * FROM delivery_reminders WHERE id = $1',
+      [id]
+    );
+
+    if (reminderResult.rows.length === 0) {
+      return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    const reminder = reminderResult.rows[0];
+
+    // 如果已经删除，返回提示
+    if (reminder.is_deleted) {
+      return res.status(400).json({ error: '催货记录已被删除' });
+    }
+
     // 管理员可以删除所有记录，客户只能删除自己的记录，生产跟单不能删除
     if (user.role === 'production_manager') {
       return res.status(403).json({ error: '无权删除此催货记录' });
@@ -414,8 +692,13 @@ export const deleteReminder = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: '无权删除此催货记录' });
     }
 
-    // 删除催货记录
-    await pool.query('DELETE FROM delivery_reminders WHERE id = $1', [id]);
+    // 软删除催货记录
+    await pool.query(
+      `UPDATE delivery_reminders 
+       SET is_deleted = true, deleted_at = CURRENT_TIMESTAMP, deleted_by = $1 
+       WHERE id = $2`,
+      [user.userId, id]
+    );
 
     res.json({
       message: '催货记录删除成功',
@@ -445,10 +728,11 @@ export const getOrderReminderStats = async (
       return res.status(404).json({ error: '订单不存在或无权访问' });
     }
 
-    // 获取催货统计
+    // 获取催货统计（区分可见和全部记录）
     const statsResult = await pool.query(
       `SELECT 
-         COUNT(*) as total_count,
+         COUNT(*) FILTER (WHERE is_deleted = false) as visible_count,
+         COUNT(*) as total_count_all,
          MAX(created_at) as last_reminder_time
        FROM delivery_reminders 
        WHERE order_id = $1 AND customer_id = $2`,
@@ -458,7 +742,7 @@ export const getOrderReminderStats = async (
     const stats = statsResult.rows[0];
     const intervalHours = await configService.getConfig('reminder_min_interval_hours') || 2;
 
-    // 计算下次可催货时间
+    // 计算下次可催货时间（基于最后一次催货，无论是否删除）
     let nextReminderTime: string | null = null;
     if (stats.last_reminder_time) {
       const lastTime = new Date(stats.last_reminder_time);
@@ -466,8 +750,12 @@ export const getOrderReminderStats = async (
       nextReminderTime = nextTime.toISOString();
     }
 
+    const totalCount = parseInt(stats.total_count_all || '0');
+    const visibleCount = parseInt(stats.visible_count || '0');
+
     res.json({
-      total_count: parseInt(stats.total_count || '0'),
+      total_count: totalCount,
+      visible_count: visibleCount,
       last_reminder_time: stats.last_reminder_time || null,
       next_reminder_time: nextReminderTime,
       interval_hours: intervalHours,

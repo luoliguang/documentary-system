@@ -84,6 +84,9 @@
               {{ order.can_ship ? '是' : '否' }}
             </el-tag>
           </el-descriptions-item>
+          <el-descriptions-item label="下单时间">
+            {{ formatDateOnly(order.order_date || '') }}
+          </el-descriptions-item>
           <el-descriptions-item label="预计出货日期">
             {{ formatDateOnly(order.estimated_ship_date || '') }}
           </el-descriptions-item>

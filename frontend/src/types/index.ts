@@ -36,6 +36,7 @@ export interface Order {
   assigned_to_name?: string; // 生产跟单名称
   is_completed: boolean;
   can_ship: boolean;
+  order_date?: string; // 下单时间
   estimated_ship_date?: string;
   actual_ship_date?: string;
   notes?: string;
@@ -67,6 +68,7 @@ export interface DeliveryReminder {
   resolved_at?: string;
   // 关联数据
   order_number?: string;
+  customer_order_number?: string;
   company_name?: string;
   contact_name?: string;
   images?: string[]; // 订单图片URL数组

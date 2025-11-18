@@ -75,6 +75,21 @@
           <el-switch v-model="form.can_ship" />
         </el-form-item>
 
+        <el-form-item label="下单时间" prop="order_date">
+          <el-date-picker
+            v-model="form.order_date"
+            type="datetime"
+            placeholder="请选择下单时间"
+            style="width: 100%"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            format="YYYY-MM-DD HH:mm"
+            :disabled-date="disabledFutureDate"
+          />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            提示：下单时间不能晚于当前时间
+          </div>
+        </el-form-item>
+
         <el-form-item label="预计出货日期">
           <el-date-picker
             v-model="form.estimated_ship_date"
@@ -243,6 +258,18 @@ const isUploadAreaFocused = ref(false);
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
 
+// 获取当前时间并格式化为 YYYY-MM-DD HH:mm:ss
+const getCurrentDateTime = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
 const form = reactive({
   order_number: '',
   customer_id: undefined as number | undefined,
@@ -251,6 +278,7 @@ const form = reactive({
   order_type: 'required' as 'required' | 'scattered' | 'photo',
   status: 'pending' as 'pending' | 'in_production' | 'completed' | 'shipped' | 'cancelled',
   can_ship: false,
+  order_date: getCurrentDateTime(), // 默认当前时间
   estimated_ship_date: '',
   notes: '',
   internal_notes: '',
@@ -278,6 +306,15 @@ const rules: FormRules = {
   status: [
     { required: true, message: '请选择订单状态', trigger: 'change' },
   ],
+  order_date: [
+    { required: true, message: '请选择下单时间', trigger: 'change' },
+  ],
+};
+
+// 禁用未来日期和时间
+const disabledFutureDate = (time: Date) => {
+  const now = new Date();
+  return time.getTime() > now.getTime();
 };
 
 const loadCustomers = async () => {

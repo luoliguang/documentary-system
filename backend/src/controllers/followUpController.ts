@@ -177,14 +177,91 @@ export const getMyFollowUpSummary = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: '只有生产跟单可以查看该数据' });
     }
 
-    const { page = 1, pageSize = 20 } = req.query;
+    const {
+      page = 1,
+      pageSize = 20,
+      status,
+      keyword,
+      hasFollowUp,
+      hasCustomerVisible,
+      hasDocument,
+    } = req.query;
+
     const limit = Number(pageSize);
     const offset = (Number(page) - 1) * limit;
 
-    const totalResult = await pool.query(
-      'SELECT COUNT(*) as total FROM orders WHERE assigned_to = $1',
-      [user.userId]
+    const whereClauses: string[] = ['o.assigned_to = $1'];
+    const whereParams: any[] = [user.userId];
+    let paramIndex = whereParams.length + 1;
+
+    const parseBooleanQuery = (value?: string | string[]) => {
+      if (Array.isArray(value)) {
+        return value[value.length - 1];
+      }
+      return value;
+    };
+
+    if (status && typeof status === 'string') {
+      whereClauses.push(`o.status = $${paramIndex++}`);
+      whereParams.push(status);
+    }
+
+    if (keyword && typeof keyword === 'string' && keyword.trim()) {
+      whereClauses.push(
+        `(o.order_number ILIKE $${paramIndex} OR o.customer_order_number ILIKE $${paramIndex} OR cu.company_name ILIKE $${paramIndex})`
+      );
+      whereParams.push(`%${keyword.trim()}%`);
+      paramIndex++;
+    }
+
+    const hasDocumentValue = parseBooleanQuery(
+      (hasDocument as string | string[]) ?? undefined
     );
+    if (hasDocumentValue === 'true') {
+      whereClauses.push(
+        `jsonb_array_length(COALESCE(o.images, '[]'::jsonb)) > 0`
+      );
+    } else if (hasDocumentValue === 'false') {
+      whereClauses.push(
+        `jsonb_array_length(COALESCE(o.images, '[]'::jsonb)) = 0`
+      );
+    }
+
+    const havingClauses: string[] = [];
+
+    const hasFollowUpValue = parseBooleanQuery(
+      (hasFollowUp as string | string[]) ?? undefined
+    );
+    if (hasFollowUpValue === 'true') {
+      havingClauses.push('COUNT(f.id) > 0');
+    } else if (hasFollowUpValue === 'false') {
+      havingClauses.push('COUNT(f.id) = 0');
+    }
+
+    const hasCustomerVisibleValue = parseBooleanQuery(
+      (hasCustomerVisible as string | string[]) ?? undefined
+    );
+    if (hasCustomerVisibleValue === 'true') {
+      havingClauses.push('COALESCE(BOOL_OR(f.is_visible_to_customer), false) = true');
+    } else if (hasCustomerVisibleValue === 'false') {
+      havingClauses.push('COALESCE(BOOL_OR(f.is_visible_to_customer), false) = false');
+    }
+
+    const whereClause = whereClauses.join(' AND ');
+    const havingClause =
+      havingClauses.length > 0 ? `HAVING ${havingClauses.join(' AND ')}` : '';
+
+    const baseQuery = `
+      FROM orders o
+      LEFT JOIN order_follow_ups f ON o.id = f.order_id
+      LEFT JOIN users cu ON o.customer_id = cu.id
+      WHERE ${whereClause}
+      GROUP BY o.id, cu.company_name, cu.contact_name, o.images
+      ${havingClause}
+    `;
+
+    const limitPlaceholder = `$${paramIndex++}`;
+    const offsetPlaceholder = `$${paramIndex++}`;
 
     const summaryQuery = `
       SELECT 
@@ -196,31 +273,54 @@ export const getMyFollowUpSummary = async (req: AuthRequest, res: Response) => {
         cu.contact_name,
         MAX(f.created_at) as last_follow_up_at,
         COUNT(f.id)::int as follow_up_count,
-        COALESCE(BOOL_OR(f.is_visible_to_customer), false) as has_customer_visible
-      FROM orders o
-      LEFT JOIN order_follow_ups f ON o.id = f.order_id
-      LEFT JOIN users cu ON o.customer_id = cu.id
-      WHERE o.assigned_to = $1
-      GROUP BY o.id, cu.company_name, cu.contact_name
+        COALESCE(BOOL_OR(f.is_visible_to_customer), false) as has_customer_visible,
+        o.images,
+        COALESCE(jsonb_array_length(COALESCE(o.images, '[]'::jsonb)), 0)::int as image_count
+      ${baseQuery}
       ORDER BY last_follow_up_at DESC NULLS LAST, o.created_at DESC
-      LIMIT $2 OFFSET $3
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
-    const summaryResult = await pool.query(summaryQuery, [
-      user.userId,
-      limit,
-      offset,
+    const totalQuery = `
+      SELECT COUNT(*) as total FROM (
+        SELECT o.id
+        ${baseQuery}
+      ) AS summary_count
+    `;
+
+    const [totalResult, summaryResult] = await Promise.all([
+      pool.query(totalQuery, whereParams),
+      pool.query(summaryQuery, [...whereParams, limit, offset]),
     ]);
 
+    const summaries = summaryResult.rows.map((row) => {
+      let images: string[] = [];
+      if (Array.isArray(row.images)) {
+        images = row.images;
+      } else if (typeof row.images === 'string') {
+        try {
+          images = JSON.parse(row.images);
+        } catch {
+          images = [];
+        }
+      } else if (row.images) {
+        images = [];
+      }
+
+      return {
+        ...row,
+        images,
+        has_document: images.length > 0,
+      };
+    });
+
     res.json({
-      summaries: summaryResult.rows,
+      summaries,
       pagination: {
         total: parseInt(totalResult.rows[0].total),
         page: Number(page),
         pageSize: limit,
-        totalPages: Math.ceil(
-          parseInt(totalResult.rows[0].total) / limit
-        ),
+        totalPages: Math.ceil(parseInt(totalResult.rows[0].total) / limit),
       },
     });
   } catch (error) {

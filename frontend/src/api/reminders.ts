@@ -5,7 +5,13 @@ interface ReminderQueryParams {
   page?: number;
   pageSize?: number;
   order_id?: number;
+  order_number?: string;
+  customer_order_number?: string;
+  company_name?: string;
+  reminder_type?: 'normal' | 'urgent';
   is_resolved?: boolean;
+  start_date?: string;
+  end_date?: string;
 }
 
 export const remindersApi = {
@@ -29,6 +35,22 @@ export const remindersApi = {
     data: { admin_response: string; is_resolved?: boolean }
   ): Promise<{ message: string; reminder: DeliveryReminder }> => {
     return api.patch(`/reminders/${id}/respond`, data);
+  },
+
+  // 编辑催货消息（仅创建者）
+  updateReminderMessage: (
+    id: number,
+    data: { message: string }
+  ): Promise<{ message: string; reminder: DeliveryReminder }> => {
+    return api.patch(`/reminders/${id}/message`, data);
+  },
+
+  // 编辑管理员回复（管理员和生产跟单）
+  updateAdminResponse: (
+    id: number,
+    data: { admin_response: string }
+  ): Promise<{ message: string; reminder: DeliveryReminder }> => {
+    return api.patch(`/reminders/${id}/admin-response`, data);
   },
 
   // 删除催货记录

@@ -22,6 +22,19 @@ export interface FollowUpSummary {
   last_follow_up_at: string | null;
   follow_up_count: number;
   has_customer_visible: boolean;
+  images?: string[];
+  has_document?: boolean;
+  image_count?: number;
+}
+
+export interface FollowUpSummaryQuery {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  keyword?: string;
+  hasFollowUp?: 'true' | 'false';
+  hasCustomerVisible?: 'true' | 'false';
+  hasDocument?: 'true' | 'false';
 }
 
 export const followUpsApi = {
@@ -61,10 +74,9 @@ export const followUpsApi = {
   },
 
   // 获取生产跟单自己的跟进概览
-  getMyFollowUpSummary: (params?: {
-    page?: number;
-    pageSize?: number;
-  }): Promise<{
+  getMyFollowUpSummary: (
+    params?: FollowUpSummaryQuery
+  ): Promise<{
     summaries: FollowUpSummary[];
     pagination: {
       total: number;

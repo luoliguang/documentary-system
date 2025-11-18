@@ -203,6 +203,12 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="order_date" label="下单时间" width="180">
+          <template #default="{ row }">
+            <span v-if="row.order_date">{{ formatDateTime(row.order_date) }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="estimated_ship_date" label="预计出货日期" width="220">
           <template #default="{ row }">
             <el-date-picker

@@ -3,6 +3,7 @@ import { remindersApi } from '../api/reminders';
 
 interface ReminderStats {
   total_count: number;
+  visible_count?: number;
   last_reminder_time: string | null;
   next_reminder_time: string | null;
   interval_hours: number;

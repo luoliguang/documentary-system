@@ -75,6 +75,19 @@
         <el-switch v-model="form.can_ship" />
       </el-form-item>
 
+      <el-form-item v-if="authStore.isAdmin" label="下单时间">
+        <el-date-picker
+          v-model="form.order_date"
+          type="datetime"
+          placeholder="请选择下单时间"
+          style="width: 100%"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          format="YYYY-MM-DD HH:mm"
+          :disabled-date="disabledFutureDate"
+          clearable
+        />
+      </el-form-item>
+
       <el-form-item label="预计出货日期">
         <el-date-picker
           v-model="form.estimated_ship_date"
@@ -270,6 +283,7 @@ const form = reactive<Partial<Order> & {
   order_number?: string;
   customer_order_number?: string;
   customer_id?: number;
+  order_date?: string;
   images: string[];
   shipping_tracking_numbers: Array<{ type: string; number: string; label?: string }>;
 }>({
@@ -279,6 +293,7 @@ const form = reactive<Partial<Order> & {
   status: 'pending' as Order['status'],
   is_completed: false,
   can_ship: false,
+  order_date: '',
   estimated_ship_date: '',
   actual_ship_date: '',
   notes: '',
@@ -301,6 +316,13 @@ const rules: FormRules = {
   status: [
     { required: true, message: '请选择订单状态', trigger: 'change' },
   ],
+};
+
+// 禁用未来日期
+const disabledFutureDate = (time: Date) => {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return time.getTime() > today.getTime();
 };
 
 const updateValue = (value: boolean) => {
@@ -335,6 +357,7 @@ watch(
       form.status = props.order.status;
       form.is_completed = props.order.is_completed;
       form.can_ship = props.order.can_ship;
+      form.order_date = props.order.order_date || '';
       form.estimated_ship_date = formatDateTimeForPicker(props.order.estimated_ship_date);
       form.actual_ship_date = formatDateTimeForPicker(props.order.actual_ship_date);
       form.notes = props.order.notes || '';

@@ -66,6 +66,17 @@ watch(() => props.modelValue, (newVal) => {
   }
 });
 
+const formatNextReminderTime = (isoString?: string | null): string | null => {
+  if (!isoString) return null;
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toLocaleString('zh-CN', {
+    hour12: false,
+  });
+};
+
 const handleSubmit = async () => {
   if (!props.orderId) {
     ElMessage.warning('订单ID不能为空');
@@ -82,8 +93,19 @@ const handleSubmit = async () => {
     ElMessage.success('催货申请已提交');
     updateValue(false);
     emit('success');
-  } catch (error) {
-    ElMessage.error('提交失败');
+  } catch (error: any) {
+    const status = error?.response?.status;
+    const data = error?.response?.data;
+    if (status === 429) {
+      const formatted = formatNextReminderTime(data?.next_reminder_time);
+      if (formatted) {
+        ElMessage.warning(`催货过于频繁，请在 ${formatted} 后再试`);
+      } else {
+        ElMessage.warning(data?.error || '催货过于频繁，请稍后再试');
+      }
+    } else {
+      ElMessage.error(data?.error || '提交失败');
+    }
   } finally {
     loading.value = false;
   }

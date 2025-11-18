@@ -2,8 +2,99 @@
   <div class="reminder-list">
     <el-card>
       <template #header>
-        <h3>{{ authStore.isCustomer ? '催单记录' : '催货记录' }}</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h3>{{ authStore.isCustomer ? '催单记录' : '催货记录' }}</h3>
+          <el-button 
+            type="primary" 
+            size="small" 
+            @click="showSearchForm = !showSearchForm"
+          >
+            <el-icon><Search /></el-icon>
+            {{ showSearchForm ? '收起搜索' : '展开搜索' }}
+          </el-button>
+        </div>
       </template>
+
+      <!-- 搜索表单 -->
+      <el-collapse-transition>
+        <div v-show="showSearchForm" class="search-form-container">
+          <el-form :model="searchForm" inline class="search-form">
+            <el-form-item label="工厂订单编号">
+              <el-input
+                v-model="searchForm.order_number"
+                placeholder="请输入工厂订单编号"
+                clearable
+                style="width: 200px"
+                @keyup.enter="handleSearch"
+              />
+            </el-form-item>
+            <el-form-item label="客户订单编号">
+              <el-input
+                v-model="searchForm.customer_order_number"
+                placeholder="请输入客户订单编号"
+                clearable
+                style="width: 200px"
+                @keyup.enter="handleSearch"
+              />
+            </el-form-item>
+            <el-form-item 
+              v-if="authStore.isAdmin || authStore.isProductionManager" 
+              label="客户公司"
+            >
+              <el-input
+                v-model="searchForm.company_name"
+                placeholder="请输入客户公司名称"
+                clearable
+                style="width: 200px"
+                @keyup.enter="handleSearch"
+              />
+            </el-form-item>
+            <el-form-item label="催单类型">
+              <el-select
+                v-model="searchForm.reminder_type"
+                placeholder="请选择催单类型"
+                clearable
+                style="width: 150px"
+              >
+                <el-option label="普通" value="normal" />
+                <el-option label="紧急" value="urgent" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="处理状态">
+              <el-select
+                v-model="searchForm.is_resolved"
+                placeholder="请选择处理状态"
+                clearable
+                style="width: 150px"
+              >
+                <el-option label="待处理" :value="false" />
+                <el-option label="已处理" :value="true" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="创建时间">
+              <el-date-picker
+                v-model="searchForm.dateRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                value-format="YYYY-MM-DD"
+                style="width: 240px"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleSearch">
+                <el-icon><Search /></el-icon>
+                搜索
+              </el-button>
+              <el-button @click="handleReset">
+                <el-icon><Refresh /></el-icon>
+                重置
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-collapse-transition>
 
       <!-- 桌面端：表格 -->
       <el-table
@@ -13,7 +104,8 @@
         class="desktop-table"
         style="width: 100%"
       >
-        <el-table-column prop="order_number" label="订单编号" width="180" />
+        <el-table-column prop="order_number" label="工厂订单编号" width="180" />
+        <el-table-column prop="customer_order_number" label="客户订单编号" width="180" />
         <el-table-column label="制单表" width="80" align="center">
           <template #default="{ row }">
             <el-image
@@ -68,8 +160,26 @@
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
+            <el-button
+              v-if="authStore.isCustomer && row.customer_id === authStore.user?.id && !row.is_resolved"
+              type="primary"
+              size="small"
+              link
+              @click="handleEditMessage(row)"
+            >
+              编辑消息
+            </el-button>
+            <el-button
+              v-if="(authStore.isAdmin || authStore.isProductionManager) && row.admin_response"
+              type="primary"
+              size="small"
+              link
+              @click="handleEditResponse(row)"
+            >
+              编辑回复
+            </el-button>
             <el-button
               v-if="authStore.isAdmin && !row.is_resolved"
               type="primary"
@@ -121,6 +231,9 @@
             </div>
             <div class="card-title-section">
               <div class="order-number">{{ reminder.order_number }}</div>
+              <div class="customer-order-number" v-if="reminder.customer_order_number">
+                客户编号：{{ reminder.customer_order_number }}
+              </div>
               <div class="company-name" v-if="(authStore.isAdmin || authStore.isProductionManager) && reminder.company_name">
                 {{ reminder.company_name }}
               </div>
@@ -156,6 +269,22 @@
 
           <div class="card-actions">
             <el-button
+              v-if="authStore.isCustomer && reminder.customer_id === authStore.user?.id && !reminder.is_resolved"
+              type="primary"
+              size="small"
+              @click="handleEditMessage(reminder)"
+            >
+              编辑消息
+            </el-button>
+            <el-button
+              v-if="(authStore.isAdmin || authStore.isProductionManager) && reminder.admin_response"
+              type="primary"
+              size="small"
+              @click="handleEditResponse(reminder)"
+            >
+              编辑回复
+            </el-button>
+            <el-button
               v-if="authStore.isAdmin && !reminder.is_resolved"
               type="primary"
               size="small"
@@ -175,6 +304,50 @@
         </div>
       </div>
     </el-card>
+
+    <!-- 编辑催货消息对话框 -->
+    <el-dialog
+      v-model="editMessageDialogVisible"
+      title="编辑催货消息"
+      :width="isMobile ? '90%' : '600px'"
+    >
+      <el-form :model="editMessageForm" label-width="100px">
+        <el-form-item label="催货消息" required>
+          <el-input
+            v-model="editMessageForm.message"
+            type="textarea"
+            :rows="4"
+            placeholder="请输入催货消息"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editMessageDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEditMessage">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑管理员回复对话框 -->
+    <el-dialog
+      v-model="editResponseDialogVisible"
+      title="编辑管理员回复"
+      :width="isMobile ? '90%' : '600px'"
+    >
+      <el-form :model="editResponseForm" label-width="100px">
+        <el-form-item label="管理员回复" required>
+          <el-input
+            v-model="editResponseForm.admin_response"
+            type="textarea"
+            :rows="4"
+            placeholder="请输入回复内容"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editResponseDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEditResponse">确定</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 回复对话框 -->
     <el-dialog
@@ -212,7 +385,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Picture } from '@element-plus/icons-vue';
+import { Picture, Search, Refresh } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { remindersApi } from '../../api/reminders';
 import type { DeliveryReminder } from '../../types';
@@ -222,15 +395,42 @@ const loading = ref(false);
 const reminders = ref<DeliveryReminder[]>([]);
 const respondDialogVisible = ref(false);
 const currentReminder = ref<DeliveryReminder | null>(null);
+// 桌面端默认展开，手机端默认收起
+const showSearchForm = ref(window.innerWidth > 768);
+const editMessageDialogVisible = ref(false);
+const editResponseDialogVisible = ref(false);
+
+// 搜索表单
+const searchForm = ref({
+  order_number: '',
+  customer_order_number: '',
+  company_name: '',
+  reminder_type: undefined as 'normal' | 'urgent' | undefined,
+  is_resolved: undefined as boolean | undefined,
+  dateRange: [] as string[],
+});
 
 // 移动端检测
 const isMobile = ref(window.innerWidth <= 768);
 
 const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 768;
+  const width = window.innerWidth;
+  isMobile.value = width <= 768;
+  // 桌面端默认展开搜索表单，手机端默认收起
+  if (width > 768 && !showSearchForm.value) {
+    showSearchForm.value = true;
+  }
 };
 
 const respondForm = ref({
+  admin_response: '',
+});
+
+const editMessageForm = ref({
+  message: '',
+});
+
+const editResponseForm = ref({
   admin_response: '',
 });
 
@@ -242,13 +442,51 @@ const formatDate = (date: string) => {
 const loadReminders = async () => {
   loading.value = true;
   try {
-    const response = await remindersApi.getDeliveryReminders();
+    const params: any = {};
+    
+    if (searchForm.value.order_number) {
+      params.order_number = searchForm.value.order_number;
+    }
+    if (searchForm.value.customer_order_number) {
+      params.customer_order_number = searchForm.value.customer_order_number;
+    }
+    if (searchForm.value.company_name) {
+      params.company_name = searchForm.value.company_name;
+    }
+    if (searchForm.value.reminder_type) {
+      params.reminder_type = searchForm.value.reminder_type;
+    }
+    if (searchForm.value.is_resolved !== undefined) {
+      params.is_resolved = searchForm.value.is_resolved;
+    }
+    if (searchForm.value.dateRange && searchForm.value.dateRange.length === 2) {
+      params.start_date = searchForm.value.dateRange[0];
+      params.end_date = searchForm.value.dateRange[1];
+    }
+
+    const response = await remindersApi.getDeliveryReminders(params);
     reminders.value = response.reminders;
   } catch (error) {
     ElMessage.error('加载催货记录失败');
   } finally {
     loading.value = false;
   }
+};
+
+const handleSearch = () => {
+  loadReminders();
+};
+
+const handleReset = () => {
+  searchForm.value = {
+    order_number: '',
+    customer_order_number: '',
+    company_name: '',
+    reminder_type: undefined,
+    is_resolved: undefined,
+    dateRange: [],
+  };
+  loadReminders();
 };
 
 const handleRespond = (reminder: DeliveryReminder) => {
@@ -276,10 +514,58 @@ const submitRespond = async () => {
   }
 };
 
+const handleEditMessage = (reminder: DeliveryReminder) => {
+  currentReminder.value = reminder;
+  editMessageForm.value.message = reminder.message || '';
+  editMessageDialogVisible.value = true;
+};
+
+const submitEditMessage = async () => {
+  if (!currentReminder.value || !editMessageForm.value.message) {
+    ElMessage.warning('请输入催货消息');
+    return;
+  }
+
+  try {
+    await remindersApi.updateReminderMessage(currentReminder.value.id, {
+      message: editMessageForm.value.message,
+    });
+    ElMessage.success('催货消息更新成功');
+    editMessageDialogVisible.value = false;
+    await loadReminders();
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error || '更新失败');
+  }
+};
+
+const handleEditResponse = (reminder: DeliveryReminder) => {
+  currentReminder.value = reminder;
+  editResponseForm.value.admin_response = reminder.admin_response || '';
+  editResponseDialogVisible.value = true;
+};
+
+const submitEditResponse = async () => {
+  if (!currentReminder.value || !editResponseForm.value.admin_response) {
+    ElMessage.warning('请输入回复内容');
+    return;
+  }
+
+  try {
+    await remindersApi.updateAdminResponse(currentReminder.value.id, {
+      admin_response: editResponseForm.value.admin_response,
+    });
+    ElMessage.success('管理员回复更新成功');
+    editResponseDialogVisible.value = false;
+    await loadReminders();
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error || '更新失败');
+  }
+};
+
 const handleDelete = async (reminder: DeliveryReminder) => {
   try {
     await ElMessageBox.confirm(
-      '确定要删除这条催货记录吗？此操作无法恢复。',
+      '确定要删除这条催货记录吗？删除后将从列表中隐藏，但不会影响催货次数统计。',
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -293,7 +579,7 @@ const handleDelete = async (reminder: DeliveryReminder) => {
     await loadReminders();
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error('删除催货记录失败');
+      ElMessage.error(error.response?.data?.error || '删除催货记录失败');
     }
   }
 };
@@ -537,6 +823,41 @@ onUnmounted(() => {
 .text-muted {
   color: #909399;
   font-size: 14px;
+}
+
+/* 搜索表单样式 */
+.search-form-container {
+  margin-bottom: 20px;
+  padding: 20px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+}
+
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.search-form .el-form-item {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .search-form {
+    flex-direction: column;
+  }
+  
+  .search-form .el-form-item {
+    width: 100%;
+  }
+  
+  .search-form .el-input,
+  .search-form .el-select,
+  .search-form .el-date-picker {
+    width: 100% !important;
+  }
 }
 </style>
 

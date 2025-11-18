@@ -4,6 +4,8 @@ import {
   getDeliveryReminders,
   respondToReminder,
   assignReminderToProductionManager,
+  updateReminderMessage,
+  updateAdminResponse,
   deleteReminder,
   getOrderReminderStats,
 } from '../controllers/reminderController.js';
@@ -29,6 +31,12 @@ router.get('/order/:order_id/stats', requireCustomer, getOrderReminderStats);
 
 // 管理员回复催货
 router.patch('/:id/respond', requireAdmin, respondToReminder);
+
+// 编辑催货消息（仅创建者）
+router.patch('/:id/message', updateReminderMessage);
+
+// 编辑管理员回复（管理员和生产跟单）
+router.patch('/:id/admin-response', updateAdminResponse);
 
 // 管理员派送催货任务给生产跟单
 router.post('/:id/assign', requireAdmin, assignReminderToProductionManager);

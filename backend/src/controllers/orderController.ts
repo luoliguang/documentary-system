@@ -422,12 +422,25 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       notes,
       internal_notes,
       estimated_ship_date,
+      order_date,
       images,
       shipping_tracking_numbers,
     } = req.body;
 
     if (!order_number || !customer_id) {
       return res.status(400).json({ error: '订单编号和客户ID不能为空' });
+    }
+
+    // 验证下单时间
+    if (order_date) {
+      const orderDate = new Date(order_date);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999); // 设置为今天的最后一刻
+      if (orderDate > today) {
+        return res.status(400).json({ error: '下单时间不能晚于当前日期' });
+      }
+    } else {
+      return res.status(400).json({ error: '下单时间不能为空' });
     }
 
     const existingOrder = await pool.query(
@@ -452,8 +465,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     const result = await pool.query(
       `INSERT INTO orders (
         order_number, customer_id, customer_code, customer_order_number,
-        status, order_type, notes, internal_notes, estimated_ship_date, images, shipping_tracking_numbers, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        status, order_type, notes, internal_notes, estimated_ship_date, order_date, images, shipping_tracking_numbers, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
         order_number,
         customer_id,
@@ -464,6 +477,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         notes || null,
         internal_notes || null,
         estimated_ship_date || null,
+        order_date || null,
         images ? JSON.stringify(images) : '[]',
         shipping_tracking_numbers ? JSON.stringify(shipping_tracking_numbers) : '[]',
         user.userId,
@@ -497,6 +511,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
       can_ship,
       estimated_ship_date,
       actual_ship_date,
+      order_date,
       notes,
       internal_notes,
       order_number,
@@ -708,6 +723,25 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
       }
     }
     
+    if (order_date !== undefined) {
+      // 验证下单时间
+      if (order_date) {
+        const orderDate = new Date(order_date);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (orderDate > today) {
+          return res.status(400).json({ error: '下单时间不能晚于当前日期' });
+        }
+      }
+      const canUpdate = user.role === 'admin';
+      if (canUpdate) {
+        updates.push(`order_date = $${paramIndex++}`);
+        values.push(order_date || null);
+      } else {
+        disallowedFields.push('order_date');
+      }
+    }
+
     if (shipping_tracking_numbers !== undefined) {
       const canUpdate = user.role === 'admin';
       if (canUpdate) {
