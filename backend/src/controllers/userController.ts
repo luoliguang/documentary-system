@@ -925,6 +925,12 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
         [id]
       );
 
+      // 1.1 删除订单分配关系
+      await client.query(
+        'DELETE FROM order_assignments WHERE production_manager_id = $1',
+        [id]
+      );
+
       // 2. 清除订单中的 created_by 引用（设置为 NULL）
       await client.query(
         'UPDATE orders SET created_by = NULL WHERE created_by = $1',

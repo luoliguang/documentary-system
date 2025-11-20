@@ -71,8 +71,7 @@
             v-if="authStore.isAdmin || authStore.isProductionManager"
             label="生产跟单"
           >
-            <span v-if="order.assigned_to_name">{{ order.assigned_to_name }}</span>
-            <span v-else>未分配</span>
+            <span>{{ getAssignedNames(order) || '未分配' }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="是否完成">
             <el-tag :type="order.is_completed ? 'success' : 'info'">
@@ -268,6 +267,7 @@ import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
 import { ordersApi } from '../../api/orders';
 import { useReminderStats } from '../../composables/useReminderStats';
+import type { Order } from '../../types';
 // @ts-ignore - Vue SFC with script setup
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
 // @ts-ignore - Vue SFC with script setup
@@ -361,6 +361,22 @@ const formatDateOnly = (date: string) => {
   } catch (error) {
     return date;
   }
+};
+
+const getAssignedNames = (target: Order | null | undefined) => {
+  if (!target) return '';
+  if (target.assigned_team?.length) {
+    return target.assigned_team
+      .map((member) => member.username || `ID ${member.id}`)
+      .join('、');
+  }
+  if (target.assigned_to_names?.length) {
+    return target.assigned_to_names.join('、');
+  }
+  if (target.assigned_to_name) {
+    return target.assigned_to_name;
+  }
+  return '';
 };
 
 const getTrackingType = (type: string) => {

@@ -77,7 +77,12 @@ export const getFollowUpsByOrderId = async (
       FROM order_follow_ups f
       LEFT JOIN users u ON f.production_manager_id = u.id
       LEFT JOIN orders o ON f.order_id = o.id
-      WHERE f.order_id = $1 AND o.assigned_to = $2
+      WHERE f.order_id = $1 AND (
+        o.assigned_to = $2 OR EXISTS (
+          SELECT 1 FROM order_assignments oa
+          WHERE oa.order_id = o.id AND oa.production_manager_id = $2
+        )
+      )
       ORDER BY f.created_at DESC
     `;
     params = [order_id, user_id];
@@ -135,7 +140,14 @@ export const getFollowUpById = async (
       FROM order_follow_ups f
       LEFT JOIN users u ON f.production_manager_id = u.id
       LEFT JOIN orders o ON f.order_id = o.id
-      WHERE f.id = $1 AND (f.production_manager_id = $2 OR o.assigned_to = $2)
+      WHERE f.id = $1 AND (
+        f.production_manager_id = $2 OR 
+        o.assigned_to = $2 OR 
+        EXISTS (
+          SELECT 1 FROM order_assignments oa
+          WHERE oa.order_id = o.id AND oa.production_manager_id = $2
+        )
+      )
     `;
     params = [id, user_id];
   } else {

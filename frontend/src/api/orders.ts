@@ -12,6 +12,8 @@ interface OrderQueryParams {
   customer_id?: number;
   customer_code?: string;
   company_name?: string;
+  estimated_ship_start?: string;
+  estimated_ship_end?: string;
 }
 
 export const ordersApi = {
@@ -32,7 +34,63 @@ export const ordersApi = {
 
   // 更新订单（管理员和生产跟单，具体权限由后端权限配置决定）
   updateOrder: (id: number, data: Partial<Order>): Promise<{ message: string; order: Order }> => {
-    return api.put(`/orders/${id}`, data);
+    // 确保清除日期时传递 null 而不是 undefined
+    // 如果 estimated_ship_date 在 data 中且值为 null，明确传递 null
+    const cleanedData: any = { ...data };
+
+    const nullableDateFields: Array<keyof Order> = [
+      'order_date',
+      'estimated_ship_date',
+      'actual_ship_date',
+    ];
+
+    nullableDateFields.forEach((field) => {
+      if (field in cleanedData && cleanedData[field] === '') {
+        cleanedData[field] = null;
+      }
+    });
+
+    if ('estimated_ship_date' in data) {
+      if (data.estimated_ship_date === null) {
+        cleanedData.estimated_ship_date = null;
+      } else if (data.estimated_ship_date === undefined) {
+        // 如果明确设置为 undefined（清除），也传递 null
+        cleanedData.estimated_ship_date = null;
+      }
+      // 如果是有值的情况，保持原样
+    }
+
+    if ('actual_ship_date' in cleanedData && typeof cleanedData.actual_ship_date === 'string') {
+      const [onlyDate] = cleanedData.actual_ship_date.split(' ');
+      cleanedData.actual_ship_date = onlyDate || cleanedData.actual_ship_date;
+    }
+
+    if (
+      'shipping_tracking_numbers' in cleanedData &&
+      Array.isArray(cleanedData.shipping_tracking_numbers)
+    ) {
+      const filtered = cleanedData.shipping_tracking_numbers.filter(
+        (item: any) => item.number && item.number.trim()
+      );
+      // 如果过滤后为空数组，删除该字段（不发送到后端）
+      if (filtered.length === 0) {
+        delete cleanedData.shipping_tracking_numbers;
+      } else {
+        cleanedData.shipping_tracking_numbers = filtered;
+      }
+    }
+
+    // 处理 images 字段：如果为空数组，删除该字段
+    if ('images' in cleanedData && Array.isArray(cleanedData.images)) {
+      const filtered = cleanedData.images.filter((image: string) => !!image);
+      if (filtered.length === 0) {
+        delete cleanedData.images;
+      } else {
+        cleanedData.images = filtered;
+      }
+    }
+
+    return api.put(`/orders/${id}`, cleanedData);
   },
 
   // 完成任务（仅管理员）
@@ -68,9 +126,21 @@ export const ordersApi = {
   // 分配订单给生产跟单（仅管理员）
   assignOrder: (
     id: number,
-    assigned_to?: number
+    payload?: number | null | {
+      assigned_to_ids?: number[];
+      primary_assigned_to?: number | null;
+      assigned_to?: number | null;
+    }
   ): Promise<{ message: string; order: Order }> => {
-    return api.post(`/orders/${id}/assign`, { assigned_to });
+    let body: Record<string, any>;
+    if (typeof payload === 'number' || payload === null) {
+      body = { assigned_to: payload };
+    } else if (payload) {
+      body = payload;
+    } else {
+      body = { assigned_to_ids: [] };
+    }
+    return api.post(`/orders/${id}/assign`, body);
   },
 
   // 删除订单（仅管理员）

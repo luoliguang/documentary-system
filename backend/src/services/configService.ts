@@ -1,179 +1,275 @@
-import { pool } from '../config/database.js';
+import {
+  deleteConfig as deleteConfigRepo,
+  findConfig,
+  listAllConfigs,
+  listConfigsByType,
+  upsertConfig,
+} from '../repositories/systemConfigRepository.js';
+import type { ConfigScope } from './config/providers/ConfigProvider.js';
+import {
+  ConfigProviderDescriptor,
+  ConfigProvider,
+} from './config/providers/ConfigProvider.js';
+import { GeneralConfigProvider } from './config/providers/GeneralConfigProvider.js';
+import { OrderOptionConfigProvider } from './config/providers/OrderOptionConfigProvider.js';
+import { RolePermissionConfigProvider } from './config/providers/RolePermissionConfigProvider.js';
+import {
+  publishConfigDeleted,
+  publishConfigUpdated,
+  publishOrderOptionChanged,
+  publishRolePermissionChanged,
+} from '../events/configEvents.js';
 
 interface CacheItem {
   data: any;
   timestamp: number;
+  type: string;
 }
+
+interface ConfigUpdateOptions {
+  updatedBy?: number;
+  source?: string;
+  type?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ConfigRecord {
+  key: string;
+  value: any;
+  description: string | null;
+  updatedAt: string | null;
+  type: string;
+  version?: number;
+  metadata?: Record<string, any> | null;
+}
+
+interface ProviderResolution {
+  type: string;
+  scope: ConfigScope;
+  provider: ConfigProvider;
+}
+
+const PROVIDERS: ConfigProviderDescriptor[] = [
+  { scope: 'permissions', provider: new RolePermissionConfigProvider() },
+  { scope: 'order_options', provider: new OrderOptionConfigProvider() },
+  { scope: 'general', provider: new GeneralConfigProvider() },
+];
 
 class ConfigService {
   private cache: Map<string, CacheItem> = new Map();
-  private readonly TTL = 5 * 60 * 1000; // 5分钟缓存
+  private readonly TTL = 5 * 60 * 1000;
 
-  /**
-   * 检查表是否存在
-   */
-  private async checkTableExists(): Promise<boolean> {
-    try {
-      const result = await pool.query(
-        `SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_name = 'system_configs'
-        )`
-      );
-      return result.rows[0].exists;
-    } catch (error) {
-      return false;
-    }
+  private getCacheKey(key: string, type: string): string {
+    return `${type}:${key}`;
   }
 
-  /**
-   * 获取配置
-   */
-  async getConfig(key: string): Promise<any> {
-    // 检查缓存
-    const cached = this.cache.get(key);
+  private resolveProvider(
+    key: string,
+    explicitType?: string
+  ): ProviderResolution {
+    if (explicitType) {
+      const descriptor = PROVIDERS.find(
+        (item) => item.provider.type === explicitType
+      );
+      if (descriptor) {
+        return {
+          type: descriptor.provider.type,
+          scope: descriptor.scope,
+          provider: descriptor.provider,
+        };
+      }
+    }
+
+    const matched = PROVIDERS.find((item) =>
+      item.provider.supportsKey(key)
+    );
+    const descriptor = matched ?? PROVIDERS.find((item) => item.scope === 'general')!;
+    return {
+      type: descriptor.provider.type,
+      scope: descriptor.scope,
+      provider: descriptor.provider,
+    };
+  }
+
+  async getConfig(
+    key: string,
+    options: { type?: string } = {}
+  ): Promise<any> {
+    const { type, provider } = this.resolveProvider(key, options.type);
+    const cacheKey = this.getCacheKey(key, type);
+    const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.TTL) {
       return cached.data;
     }
 
-    // 检查表是否存在
-    const tableExists = await this.checkTableExists();
-    if (!tableExists) {
-      // 表不存在，返回默认配置
-      const defaultConfig = this.getDefaultConfig(key);
-      if (defaultConfig !== null) {
-        this.cache.set(key, { data: defaultConfig, timestamp: Date.now() });
+    const record = await this.findWithFallback(key, type);
+    if (!record) {
+      const defaultValue = provider.getDefaultValue(key);
+      if (defaultValue !== undefined) {
+        this.cache.set(cacheKey, { data: defaultValue, timestamp: Date.now(), type });
       }
-      return defaultConfig;
+      return defaultValue ?? null;
     }
 
-    // 从数据库加载
-    try {
-      const result = await pool.query(
-        'SELECT config_value FROM system_configs WHERE config_key = $1',
-        [key]
-      );
+    this.cache.set(cacheKey, {
+      data: record.config_value,
+      timestamp: Date.now(),
+      type,
+    });
+    return record.config_value;
+  }
 
-      if (result.rows.length === 0) {
-        // 如果数据库中没有，返回默认配置
-        const defaultConfig = this.getDefaultConfig(key);
-        if (defaultConfig !== null) {
-          this.cache.set(key, { data: defaultConfig, timestamp: Date.now() });
-        }
-        return defaultConfig;
+  async getConfigWithMeta(
+    key: string,
+    options: { type?: string } = {}
+  ): Promise<ConfigRecord | null> {
+    const { type, provider } = this.resolveProvider(key, options.type);
+    const record = await this.findWithFallback(key, type);
+    if (!record) {
+      const defaultValue = provider.getDefaultValue(key);
+      if (defaultValue === undefined) {
+        return null;
       }
+      return {
+        key,
+        value: defaultValue,
+        description: null,
+        updatedAt: null,
+        type,
+      };
+    }
+    return {
+      key: record.config_key,
+      value: record.config_value,
+      description: record.description,
+      updatedAt: record.updated_at,
+      type: record.config_type,
+      version: record.version,
+      metadata: record.metadata,
+    };
+  }
 
-      const data = result.rows[0].config_value;
-      this.cache.set(key, { data, timestamp: Date.now() });
-      return data;
-    } catch (error) {
-      console.error(`获取配置 ${key} 错误:`, error);
-      // 如果数据库查询失败，尝试返回默认配置
-      return this.getDefaultConfig(key);
+  async setConfig(
+    key: string,
+    value: any,
+    description?: string,
+    options: ConfigUpdateOptions = {}
+  ): Promise<void> {
+    const { type, scope, provider } = this.resolveProvider(key, options.type);
+    if (provider.validate) {
+      await provider.validate(key, value);
+    }
+    const normalizedValue =
+      provider.normalize?.(key, value) ?? value;
+    const row = await upsertConfig({
+      key,
+      type,
+      value: normalizedValue,
+      description,
+      metadata: options.metadata,
+      updatedBy: options.updatedBy,
+    });
+    this.invalidateCache(key, type);
+    this.notifyConfigUpdated(
+      key,
+      row.config_value,
+      row.description,
+      options,
+      row.updated_at,
+      row.version,
+      type,
+      scope
+    );
+  }
+
+  async deleteConfig(
+    key: string,
+    options: ConfigUpdateOptions = {}
+  ): Promise<void> {
+    const { type } = this.resolveProvider(key, options.type);
+    const record = await this.findWithFallback(key, type);
+    const targetType = record?.config_type ?? type;
+    const result = await deleteConfigRepo(key, targetType);
+    if (result > 0) {
+      this.invalidateCache(key, targetType);
+      publishConfigDeleted({
+        key,
+        deletedBy: options.updatedBy,
+        timestamp: new Date().toISOString(),
+      });
     }
   }
 
-  /**
-   * 设置配置
-   */
-  async setConfig(key: string, value: any, description?: string): Promise<void> {
-    // 检查表是否存在
-    const tableExists = await this.checkTableExists();
-    if (!tableExists) {
-      throw new Error('系统配置表不存在，请先执行数据库迁移脚本');
-    }
-
-    try {
-      await pool.query(
-        `INSERT INTO system_configs (config_key, config_value, description)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (config_key) 
-         DO UPDATE SET config_value = $2, description = COALESCE($3, system_configs.description), updated_at = CURRENT_TIMESTAMP`,
-        [key, JSON.stringify(value), description || null]
-      );
-      this.invalidateCache(key);
-    } catch (error) {
-      console.error(`设置配置 ${key} 错误:`, error);
-      throw error;
-    }
+  async getAllConfigs(): Promise<ConfigRecord[]> {
+    const rows = await listAllConfigs();
+    return rows.map((row) => ({
+      key: row.config_key,
+      value: row.config_value,
+      description: row.description,
+      updatedAt: row.updated_at,
+      type: row.config_type,
+      version: row.version,
+      metadata: row.metadata,
+    }));
   }
 
-  /**
-   * 删除配置
-   */
-  async deleteConfig(key: string): Promise<void> {
-    // 检查表是否存在
-    const tableExists = await this.checkTableExists();
-    if (!tableExists) {
-      throw new Error('系统配置表不存在，请先执行数据库迁移脚本');
-    }
-
-    try {
-      await pool.query('DELETE FROM system_configs WHERE config_key = $1', [key]);
-      this.invalidateCache(key);
-    } catch (error) {
-      console.error(`删除配置 ${key} 错误:`, error);
-      throw error;
-    }
+  async getConfigsByType(type: string): Promise<ConfigRecord[]> {
+    const rows = await listConfigsByType(type);
+    return rows.map((row) => ({
+      key: row.config_key,
+      value: row.config_value,
+      description: row.description,
+      updatedAt: row.updated_at,
+      type: row.config_type,
+      version: row.version,
+      metadata: row.metadata,
+    }));
   }
 
-  /**
-   * 获取所有配置
-   */
-  async getAllConfigs(): Promise<any[]> {
-    // 检查表是否存在
-    const tableExists = await this.checkTableExists();
-    if (!tableExists) {
-      return [];
-    }
-
-    try {
-      const result = await pool.query(
-        'SELECT id, config_key, config_value, description, created_at, updated_at FROM system_configs ORDER BY config_key'
-      );
-      return result.rows;
-    } catch (error) {
-      console.error('获取所有配置错误:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 清除缓存
-   */
-  invalidateCache(key?: string): void {
+  invalidateCache(key?: string, type = 'general'): void {
     if (key) {
-      this.cache.delete(key);
+      this.cache.delete(this.getCacheKey(key, type));
     } else {
       this.cache.clear();
     }
   }
 
-  /**
-   * 获取默认配置（用于向后兼容）
-   */
-  private getDefaultConfig(key: string): any {
-    const defaults: Record<string, any> = {
-      roles: [
-        { value: 'admin', label: '管理员' },
-        { value: 'production_manager', label: '生产跟单' },
-        { value: 'customer', label: '客户' },
-      ],
-      order_types: [
-        { value: 'required', label: '必发' },
-        { value: 'scattered', label: '散单' },
-        { value: 'photo', label: '拍照' },
-      ],
-      order_statuses: [
-        { value: 'pending', label: '待处理' },
-        { value: 'in_production', label: '生产中' },
-        { value: 'completed', label: '已完成' },
-        { value: 'shipped', label: '已发货' },
-        { value: 'cancelled', label: '已取消' },
-      ],
-      reminder_min_interval_hours: 2, // 催货最小间隔（小时），默认2小时
+  private async findWithFallback(key: string, type: string) {
+    const record = await findConfig(key, type);
+    if (!record && type !== 'general') {
+      return findConfig(key, 'general');
+    }
+    return record;
+  }
+
+  private notifyConfigUpdated(
+    key: string,
+    value: any,
+    description: string | null = null,
+    options: ConfigUpdateOptions = {},
+    updatedAt?: string,
+    version?: number,
+    type: string = 'general',
+    scope: ConfigScope = 'general'
+  ): void {
+    const payload = {
+      key,
+      type,
+      value,
+      description,
+      updatedBy: options.updatedBy,
+      source: options.source,
+      timestamp: new Date().toISOString(),
+      updatedAt,
+      version,
     };
-    return defaults[key] !== undefined ? defaults[key] : null;
+    publishConfigUpdated(payload);
+    if (type === 'permissions') {
+      publishRolePermissionChanged(payload);
+    }
+    if (scope === 'order_options') {
+      publishOrderOptionChanged(payload);
+    }
   }
 }
 

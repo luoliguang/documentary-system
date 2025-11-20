@@ -1,12 +1,7 @@
-import { configService } from '../services/configService.js';
+import { getRolePermissions } from '../services/rolePermissionService.js';
+import type { RolePermissionMap } from '../services/rolePermissionService.js';
 
-interface PermissionConfig {
-  [role: string]: {
-    [resource: string]: {
-      [action: string]: boolean;
-    };
-  };
-}
+type PermissionConfig = RolePermissionMap;
 
 /**
  * 检查用户是否有权限执行某个操作
@@ -23,7 +18,7 @@ export async function checkPermission(
 
   try {
     // 从配置表获取权限配置
-    const permissions = await configService.getConfig('role_permissions') as PermissionConfig;
+    const permissions: RolePermissionMap = await getRolePermissions();
     
     if (!permissions) {
       console.warn(`[权限检查] 权限配置不存在，使用默认权限 (${role} -> ${resource}.${action})`);

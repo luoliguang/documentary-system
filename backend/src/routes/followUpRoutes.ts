@@ -8,6 +8,11 @@ import {
   getMyFollowUpSummary,
 } from '../controllers/followUpController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { validateBody } from '../middleware/validate.js';
+import {
+  createFollowUpSchema,
+  updateFollowUpSchema,
+} from '../validators/followUpSchemas.js';
 
 const router = express.Router();
 
@@ -15,7 +20,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // 创建跟进记录（仅生产跟单）
-router.post('/', createOrderFollowUp);
+router.post('/', validateBody(createFollowUpSchema), createOrderFollowUp);
 
 // 获取订单的跟进记录列表
 router.get('/order/:id', getOrderFollowUps);
@@ -27,7 +32,7 @@ router.get('/my', getMyFollowUpSummary);
 router.get('/:id', getFollowUp);
 
 // 更新跟进记录（仅生产跟单）
-router.put('/:id', updateOrderFollowUp);
+router.put('/:id', validateBody(updateFollowUpSchema), updateOrderFollowUp);
 
 // 删除跟进记录（仅生产跟单）
 router.delete('/:id', deleteOrderFollowUp);

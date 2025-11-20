@@ -176,11 +176,20 @@ const isMobile = ref(window.innerWidth <= 768);
 
 const isProductionManager = computed(() => authStore.isProductionManager);
 const isCustomer = computed(() => authStore.isCustomer);
+const isAssignedToCurrentUser = computed(() => {
+  if (!props.order || !authStore.user) return false;
+  const ids = props.order.assigned_to_ids?.length
+    ? props.order.assigned_to_ids
+    : props.order.assigned_to
+    ? [props.order.assigned_to]
+    : [];
+  return ids.includes(authStore.user.id);
+});
+
 const canManageFollowUps = computed(
   () =>
     authStore.isAdmin ||
-    (isProductionManager.value &&
-      props.order?.assigned_to === authStore.user?.id)
+    (isProductionManager.value && isAssignedToCurrentUser.value)
 );
 
 const followUpForm = ref({

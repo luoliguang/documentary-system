@@ -12,6 +12,10 @@ import {
   createNotification,
   getAllAdminUserIds,
 } from '../services/notificationService.js';
+import {
+  canCreateFollowUp,
+  canAccessFollowUp,
+} from '../services/permissionService.js';
 
 /**
  * 创建跟进记录
@@ -28,23 +32,9 @@ export const createOrderFollowUp = async (
       return res.status(400).json({ error: '订单ID和跟进内容不能为空' });
     }
 
-    // 验证用户是否有权限创建跟进记录
-    if (user.role !== 'production_manager') {
-      return res.status(403).json({ error: '只有生产跟单可以创建跟进记录' });
-    }
-
-    // 验证订单是否分配给该生产跟单
-    const orderResult = await pool.query(
-      'SELECT id, assigned_to FROM orders WHERE id = $1',
-      [order_id]
-    );
-
-    if (orderResult.rows.length === 0) {
-      return res.status(404).json({ error: '订单不存在' });
-    }
-
-    const order = orderResult.rows[0];
-    if (order.assigned_to !== user.userId) {
+    // 使用权限服务检查创建权限
+    const canCreate = await canCreateFollowUp(user.userId, user.role, order_id);
+    if (!canCreate) {
       return res.status(403).json({ error: '您没有权限对此订单创建跟进记录' });
     }
 
@@ -173,6 +163,7 @@ export const getOrderFollowUps = async (req: AuthRequest, res: Response) => {
 export const getMyFollowUpSummary = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
+    // 使用权限服务检查角色权限
     if (user.role !== 'production_manager') {
       return res.status(403).json({ error: '只有生产跟单可以查看该数据' });
     }
@@ -190,8 +181,13 @@ export const getMyFollowUpSummary = async (req: AuthRequest, res: Response) => {
     const limit = Number(pageSize);
     const offset = (Number(page) - 1) * limit;
 
-    const whereClauses: string[] = ['o.assigned_to = $1'];
-    const whereParams: any[] = [user.userId];
+    const whereClauses: string[] = [
+      `(o.assigned_to = $1 OR EXISTS (
+        SELECT 1 FROM order_assignments oa
+        WHERE oa.order_id = o.id AND oa.production_manager_id = $2
+      ))`,
+    ];
+    const whereParams: any[] = [user.userId, user.userId];
     let paramIndex = whereParams.length + 1;
 
     const parseBooleanQuery = (value?: string | string[]) => {
@@ -337,10 +333,16 @@ export const getFollowUp = async (req: AuthRequest, res: Response) => {
     const user = req.user!;
     const { id } = req.params;
 
+    // 使用权限服务检查访问权限
+    const canAccess = await canAccessFollowUp(user.userId, user.role, Number(id));
+    if (!canAccess) {
+      return res.status(403).json({ error: '跟进记录不存在或无权访问' });
+    }
+
     const followUp = await getFollowUpById(Number(id), user.role, user.userId);
 
     if (!followUp) {
-      return res.status(404).json({ error: '跟进记录不存在或无权访问' });
+      return res.status(404).json({ error: '跟进记录不存在' });
     }
 
     res.json({ followUp });
@@ -362,8 +364,10 @@ export const updateOrderFollowUp = async (
     const { id } = req.params;
     const { content, is_visible_to_customer } = req.body;
 
-    if (user.role !== 'production_manager') {
-      return res.status(403).json({ error: '只有生产跟单可以更新跟进记录' });
+    // 使用权限服务检查访问权限（更新需要先能访问）
+    const canAccess = await canAccessFollowUp(user.userId, user.role, Number(id));
+    if (!canAccess || user.role !== 'production_manager') {
+      return res.status(403).json({ error: '您没有权限更新此跟进记录' });
     }
 
     const updates: any = {};
@@ -397,8 +401,10 @@ export const deleteOrderFollowUp = async (
     const user = req.user!;
     const { id } = req.params;
 
-    if (user.role !== 'production_manager') {
-      return res.status(403).json({ error: '只有生产跟单可以删除跟进记录' });
+    // 使用权限服务检查访问权限（删除需要先能访问）
+    const canAccess = await canAccessFollowUp(user.userId, user.role, Number(id));
+    if (!canAccess || user.role !== 'production_manager') {
+      return res.status(403).json({ error: '您没有权限删除此跟进记录' });
     }
 
     await deleteFollowUp(Number(id), user.userId);

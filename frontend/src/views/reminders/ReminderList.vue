@@ -5,9 +5,10 @@
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h3>{{ authStore.isCustomer ? '催单记录' : '催货记录' }}</h3>
           <el-button 
+            v-if="canUseSearch"
             type="primary" 
             size="small" 
-            @click="showSearchForm = !showSearchForm"
+            @click="toggleSearchForm"
           >
             <el-icon><Search /></el-icon>
             {{ showSearchForm ? '收起搜索' : '展开搜索' }}
@@ -16,7 +17,7 @@
       </template>
 
       <!-- 搜索表单 -->
-      <el-collapse-transition>
+      <el-collapse-transition v-if="canUseSearch">
         <div v-show="showSearchForm" class="search-form-container">
           <el-form :model="searchForm" inline class="search-form">
             <el-form-item label="工厂订单编号">
@@ -383,7 +384,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture, Search, Refresh } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
@@ -413,14 +414,34 @@ const searchForm = ref({
 // 移动端检测
 const isMobile = ref(window.innerWidth <= 768);
 
+const canUseSearch = computed(() => {
+  if (authStore.isProductionManager && isMobile.value) {
+    return false;
+  }
+  return true;
+});
+
+const toggleSearchForm = () => {
+  if (!canUseSearch.value) {
+    return;
+  }
+  showSearchForm.value = !showSearchForm.value;
+};
+
 const checkMobile = () => {
   const width = window.innerWidth;
   isMobile.value = width <= 768;
-  // 桌面端默认展开搜索表单，手机端默认收起
-  if (width > 768 && !showSearchForm.value) {
+};
+
+watch(canUseSearch, (value) => {
+  if (!value) {
+    showSearchForm.value = false;
+    return;
+  }
+  if (!isMobile.value) {
     showSearchForm.value = true;
   }
-};
+});
 
 const respondForm = ref({
   admin_response: '',

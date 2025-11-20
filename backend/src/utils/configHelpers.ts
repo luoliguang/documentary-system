@@ -1,4 +1,6 @@
 import { configService } from '../services/configService.js';
+import { ORDER_TYPE_OPTIONS } from '../constants/orderType.js';
+import { ORDER_STATUS_OPTIONS } from '../constants/orderStatus.js';
 
 /**
  * 获取订单类型选项
@@ -17,11 +19,7 @@ export async function getOrderTypeOptions() {
   }
   
   // 默认值
-  return [
-    { label: '必发', value: 'required' },
-    { label: '散单', value: 'scattered' },
-    { label: '拍照', value: 'photo' },
-  ];
+  return ORDER_TYPE_OPTIONS;
 }
 
 /**
@@ -41,13 +39,7 @@ export async function getOrderStatusOptions() {
   }
   
   // 默认值
-  return [
-    { label: '待处理', value: 'pending' },
-    { label: '生产中', value: 'in_production' },
-    { label: '已完成', value: 'completed' },
-    { label: '已发货', value: 'shipped' },
-    { label: '已取消', value: 'cancelled' },
-  ];
+  return ORDER_STATUS_OPTIONS;
 }
 
 /**

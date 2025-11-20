@@ -7,7 +7,7 @@
       </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="roles" stripe style="width: 100%">
+    <el-table v-loading="tableLoading" :data="roles" stripe style="width: 100%">
       <el-table-column prop="value" label="角色值" width="150" />
       <el-table-column prop="label" label="角色名称" width="200" />
       <el-table-column label="操作" width="200" fixed="right">
@@ -84,19 +84,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import { configsApi } from '../../../api/configs';
 import { useConfigOptions } from '../../../composables/useConfigOptions';
+import { useConfigStore } from '../../../stores/config';
 
 interface Role {
   value: string;
   label: string;
 }
 
-const loading = ref(false);
-const roles = ref<Role[]>([]);
+const ROLES_KEY = 'roles';
+const ROLES_TYPE = 'general';
+const ROLE_PERMISSIONS_KEY = 'role_permissions';
+const ROLE_PERMISSIONS_TYPE = 'permissions';
+
+const configStore = useConfigStore();
+
+const tableLoading = ref(false);
+const roles = computed<Role[]>(() => {
+  return configStore.getConfigValue<Role[]>(ROLES_KEY, ROLES_TYPE) || [];
+});
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const dialogTitle = ref('创建角色');
@@ -114,14 +123,13 @@ const form = ref<Role>({
 });
 
 const loadRoles = async () => {
-  loading.value = true;
+  tableLoading.value = true;
   try {
-    const response = await configsApi.getConfigByKey('roles') as unknown as { config: Role[] };
-    roles.value = response.config || [];
+    await configStore.fetchConfig(ROLES_KEY, { type: ROLES_TYPE, force: true });
   } catch (error) {
     ElMessage.error('加载角色列表失败');
   } finally {
-    loading.value = false;
+    tableLoading.value = false;
   }
 };
 
@@ -173,14 +181,15 @@ const loadRolePermissions = async (roleValue: string) => {
 
   permissionsLoading.value = true;
   try {
-    // 加载所有角色权限配置
-    const response = await configsApi.getConfigByKey('role_permissions') as unknown as { config: Record<string, any> };
-    allRolePermissions.value = response.config || {};
-    
-    // 获取当前角色的权限
+    const data =
+      (await configStore.fetchConfig(ROLE_PERMISSIONS_KEY, {
+        type: ROLE_PERMISSIONS_TYPE,
+      })) || {};
+    allRolePermissions.value = JSON.parse(JSON.stringify(data));
+
     const currentRolePermissions = allRolePermissions.value[roleValue] || {};
     rolePermissions.value = JSON.parse(JSON.stringify(currentRolePermissions));
-    
+
     // 确保 orders 资源有 allowed_order_types 字段
     if (rolePermissions.value.orders && !rolePermissions.value.orders.allowed_order_types) {
       rolePermissions.value.orders.allowed_order_types = [];
@@ -228,16 +237,20 @@ const handleDelete = async (row: Role) => {
 
     // 1. 删除角色
     const updatedRoles = roles.value.filter((r) => r.value !== row.value);
-    await configsApi.updateConfig('roles', { config_value: updatedRoles });
+    await configStore.saveConfig(ROLES_KEY, updatedRoles, { type: ROLES_TYPE });
 
     // 2. 删除该角色的权限配置
     try {
-      const response = await configsApi.getConfigByKey('role_permissions') as unknown as { config: Record<string, any> };
-      const currentPermissions = response.config || {};
+      const response =
+        (await configStore.fetchConfig(ROLE_PERMISSIONS_KEY, {
+          type: ROLE_PERMISSIONS_TYPE,
+          force: true,
+        })) || {};
+      const currentPermissions = JSON.parse(JSON.stringify(response));
       if (currentPermissions[row.value]) {
         delete currentPermissions[row.value];
-        await configsApi.updateConfig('role_permissions', {
-          config_value: currentPermissions,
+        await configStore.saveConfig(ROLE_PERMISSIONS_KEY, currentPermissions, {
+          type: ROLE_PERMISSIONS_TYPE,
         });
       }
     } catch (error) {
@@ -275,20 +288,23 @@ const handleSubmit = async () => {
       updatedRoles = [...roles.value, form.value];
     }
 
-    await configsApi.updateConfig('roles', { config_value: updatedRoles });
+    await configStore.saveConfig(ROLES_KEY, updatedRoles, { type: ROLES_TYPE });
 
     // 2. 如果是编辑模式且修改了权限，更新权限配置
     if (isEdit.value && Object.keys(rolePermissions.value).length > 0) {
-      // 加载最新的权限配置
-      const response = await configsApi.getConfigByKey('role_permissions') as unknown as { config: Record<string, any> };
-      const currentPermissions = response.config || {};
+      const response =
+        (await configStore.fetchConfig(ROLE_PERMISSIONS_KEY, {
+          type: ROLE_PERMISSIONS_TYPE,
+          force: true,
+        })) || {};
+      const currentPermissions = JSON.parse(JSON.stringify(response));
       
       // 更新当前角色的权限
       currentPermissions[form.value.value] = JSON.parse(JSON.stringify(rolePermissions.value));
       
       // 保存权限配置
-      await configsApi.updateConfig('role_permissions', {
-        config_value: currentPermissions,
+      await configStore.saveConfig(ROLE_PERMISSIONS_KEY, currentPermissions, {
+        type: ROLE_PERMISSIONS_TYPE,
       });
     }
 

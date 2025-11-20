@@ -7,6 +7,10 @@ import {
   createNotification,
 } from '../services/notificationService.js';
 import { configService } from '../services/configService.js';
+import {
+  canCreateReminder,
+  canRespondReminder,
+} from '../services/permissionService.js';
 
 // 催货（客户功能）
 export const createDeliveryReminder = async (
@@ -632,6 +636,12 @@ export const updateAdminResponse = async (req: AuthRequest, res: Response) => {
     // 已删除的记录不能编辑
     if (reminder.is_deleted) {
       return res.status(400).json({ error: '催货记录已被删除，无法编辑' });
+    }
+
+    // 使用权限服务检查回复权限
+    const canRespond = await canRespondReminder(user.role);
+    if (!canRespond) {
+      return res.status(403).json({ error: '您没有权限回复此催货记录' });
     }
 
     // 生产跟单只能编辑分配给自己的催货任务的回复

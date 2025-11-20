@@ -11,12 +11,21 @@ import {
   getCustomers,
   getProductionManagers,
   assignOrderToProductionManager,
-} from '../controllers/orderController.js';
+} from '../controllers/orders/index.js';
 import {
   authenticateToken,
   requireAdmin,
   requireCustomer,
 } from '../middleware/auth.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
+import {
+  createOrderSchema,
+  updateOrderSchema,
+  updateCustomerOrderNumberSchema,
+  completeOrderSchema,
+  assignOrderSchema,
+  getOrdersQuerySchema,
+} from '../validators/orderSchemas.js';
 
 const router = express.Router();
 
@@ -24,7 +33,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // 获取订单列表（管理员和客户都可以访问，但返回结果不同）
-router.get('/', getOrders);
+router.get('/', validateQuery(getOrdersQuerySchema), getOrders);
 
 // 获取所有客户列表（仅管理员）- 必须在 /:id 之前
 router.get('/customers/list', requireAdmin, getCustomers);
@@ -39,15 +48,16 @@ router.get('/:id/history', getOrderStatusHistory);
 router.patch(
   '/:id/customer-order-number',
   requireCustomer,
+  validateBody(updateCustomerOrderNumberSchema),
   updateCustomerOrderNumber
 );
 
 // 以下路由仅管理员可访问
-router.post('/', requireAdmin, createOrder);
+router.post('/', requireAdmin, validateBody(createOrderSchema), createOrder);
 // 更新订单：管理员和生产跟单都可以访问（权限在控制器中检查）
-router.put('/:id', updateOrder);
-router.patch('/:id/complete', requireAdmin, completeOrder);
-router.post('/:id/assign', requireAdmin, assignOrderToProductionManager);
+router.put('/:id', validateBody(updateOrderSchema), updateOrder);
+router.patch('/:id/complete', requireAdmin, validateBody(completeOrderSchema), completeOrder);
+router.post('/:id/assign', requireAdmin, validateBody(assignOrderSchema), assignOrderToProductionManager);
 router.delete('/:id', requireAdmin, deleteOrder);
 
 // 获取订单详情（必须在最后，避免匹配到其他路由）

@@ -85,6 +85,18 @@
               />
             </el-select>
           </el-form-item>
+          <el-form-item label="预计出货时间">
+            <el-date-picker
+              v-model="filters.estimated_ship_date_range"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              class="filter-select"
+              :unlink-panels="true"
+            />
+          </el-form-item>
           <el-form-item class="filter-buttons">
             <el-button type="primary" @click="loadOrders">查询</el-button>
             <el-button @click="resetFilters">重置</el-button>
@@ -171,10 +183,21 @@
         <el-table-column
           v-if="authStore.isAdmin || authStore.isProductionManager"
           label="生产跟单"
-          width="160"
+          min-width="180"
         >
           <template #default="{ row }">
-            <span>{{ row.assigned_to_name || '未分配' }}</span>
+            <div v-if="row.assigned_team && row.assigned_team.length" class="assigned-tags">
+              <el-tag
+                v-for="member in row.assigned_team"
+                :key="member.id"
+                size="small"
+                effect="plain"
+                style="margin-right: 4px; margin-bottom: 4px"
+              >
+                {{ member.username || `ID ${member.id}` }}
+              </el-tag>
+            </div>
+            <span v-else>{{ row.assigned_to_name || '未分配' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="is_completed" label="是否完成" width="100">
@@ -260,12 +283,12 @@
             </el-button>
             <el-button
               v-if="authStore.isAdmin"
-              type="info"
+              :type="row.assigned_to_ids?.length ? 'success' : 'info'"
               size="small"
               link
               @click="handleAssign(row)"
             >
-              分配
+              {{ row.assigned_to_ids?.length ? '已分配' : '分配' }}
             </el-button>
             <el-button
               v-if="authStore.isCustomer"
@@ -300,198 +323,30 @@
       </el-table>
 
       <!-- 移动端：订单卡片列表 -->
-      <div v-loading="ordersStore.loading" class="mobile-card-list">
-        <div
-          v-for="order in ordersStore.orders"
-          :key="order.id"
-          class="order-card"
-        >
-          <div class="card-header-section">
-            <div class="card-image-section">
-              <el-image
-                v-if="order.images && order.images.length > 0"
-                :src="order.images[0]"
-                :preview-src-list="order.images"
-                :initial-index="0"
-                fit="cover"
-                class="order-thumbnail-mobile"
-                :preview-teleported="true"
-                lazy
-              >
-                <template #error>
-                  <div class="image-slot-mobile">
-                    <el-icon><Picture /></el-icon>
-                  </div>
-                </template>
-              </el-image>
-              <div v-else class="no-image-mobile">-</div>
-            </div>
-            <div class="card-title-section">
-              <div class="order-number-cell">
-                <span class="order-number">{{ order.order_number }}</span>
-                <el-badge
-                  v-if="getOrderReminderCount(order.id) > 0"
-                  :value="getOrderReminderCount(order.id)"
-                  type="danger"
-                  class="reminder-badge"
-                />
-                <el-badge
-                  v-if="getOrderAssignmentCount(order.id) > 0"
-                  :value="getOrderAssignmentCount(order.id)"
-                  type="primary"
-                  class="assignment-badge"
-                />
-              </div>
-              <div class="customer-order-number" v-if="order.customer_order_number">
-                {{ order.customer_order_number }}
-              </div>
-            </div>
-          </div>
-
-          <div class="card-content">
-            <div class="card-row" v-if="authStore.isAdmin && order.company_name">
-              <span class="label">客户公司：</span>
-              <span class="value">{{ order.company_name }}</span>
-            </div>
-            <div class="card-row">
-              <span class="label">状态：</span>
-              <span class="value">
-                <el-select
-                  v-if="authStore.isAdmin"
-                  v-model="order.status"
-                  size="small"
-                  class="status-select-mobile"
-                  @change="handleStatusChange(order)"
-                >
-                  <el-option
-                    v-for="status in orderStatuses"
-                    :key="status.value"
-                    :label="status.label"
-                    :value="status.value"
-                  />
-                </el-select>
-                <el-tag v-else :type="getStatusType(order.status)" size="small">
-                  {{ getStatusText(order.status) }}
-                </el-tag>
-              </span>
-            </div>
-            <div v-if="authStore.isAdmin || authStore.isProductionManager" class="card-row">
-              <span class="label">生产跟单：</span>
-              <span class="value">{{ order.assigned_to_name || '未分配' }}</span>
-            </div>
-            <div class="card-row">
-              <span class="label">是否完成：</span>
-              <span class="value">
-                <el-switch
-                  v-if="authStore.isAdmin || authStore.isProductionManager"
-                  v-model="order.is_completed"
-                  size="small"
-                  @change="handleIsCompletedChange(order)"
-                />
-                <el-tag v-else :type="order.is_completed ? 'success' : 'info'" size="small">
-                  {{ order.is_completed ? '是' : '否' }}
-                </el-tag>
-              </span>
-            </div>
-            <div class="card-row">
-              <span class="label">可出货：</span>
-              <span class="value">
-                <el-switch
-                  v-if="authStore.isAdmin || authStore.isProductionManager"
-                  v-model="order.can_ship"
-                  size="small"
-                  @change="handleCanShipChange(order)"
-                />
-                <el-tag v-else :type="order.can_ship ? 'success' : 'info'" size="small">
-                  {{ order.can_ship ? '是' : '否' }}
-                </el-tag>
-              </span>
-            </div>
-            <div class="card-row">
-              <span class="label">预计出货日期：</span>
-              <span class="value">
-                <el-date-picker
-                  v-if="authStore.isAdmin || authStore.isProductionManager"
-                  v-model="order.estimated_ship_date"
-                  type="datetime"
-                  placeholder="选择日期时间"
-                  size="small"
-                  class="date-picker-mobile"
-                  value-format="YYYY-MM-DD HH:mm:ss"
-                  format="YYYY-MM-DD HH:mm"
-                  @change="(val: string | null) => handleEstimatedShipDateChange(order, val)"
-                />
-                <span v-else>{{ formatDateTime(order.estimated_ship_date || '') }}</span>
-              </span>
-            </div>
-            <div class="card-row">
-              <span class="label">备注：</span>
-              <span class="value">
-                <span class="notes-text">{{ order.notes || '-' }}</span>
-              </span>
-            </div>
-          </div>
-
-          <div class="card-actions">
-            <el-button
-              type="primary"
-              size="small"
-              @click="viewOrder(order.id)"
-            >
-              查看
-            </el-button>
-            <el-button
-              v-if="authStore.isAdmin"
-              type="success"
-              size="small"
-              @click="handleQuickEdit(order)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-if="authStore.isAdmin && !order.is_completed"
-              type="success"
-              size="small"
-              @click="handleComplete(order.id)"
-            >
-              完成
-            </el-button>
-            <el-button
-              v-if="authStore.isAdmin"
-              type="info"
-              size="small"
-              @click="handleAssign(order)"
-            >
-              分配
-            </el-button>
-            <el-button
-              v-if="authStore.isCustomer"
-              type="warning"
-              size="small"
-              :disabled="order.can_ship || (reminderStats.getReminderStats(order.id) && !reminderStats.canRemind(order.id))"
-              @click="handleReminder(order.id)"
-            >
-              <span>催货</span>
-              <span v-if="reminderStats.getReminderStats(order.id)?.total_count" style="margin-left: 4px; font-size: 11px; opacity: 0.7;">
-                ({{ reminderStats.getReminderStats(order.id)?.total_count }}次)
-              </span>
-              <span v-if="reminderStats.getReminderStats(order.id) && !reminderStats.canRemind(order.id)" style="margin-left: 4px; font-size: 11px; color: #f56c6c;">
-                ({{ reminderStats.formatRemainingTime(reminderCountdowns.get(order.id) || 0) }})
-              </span>
-              <span v-if="order.can_ship" style="margin-left: 4px; font-size: 11px; opacity: 0.7;">
-                (已可出货)
-              </span>
-            </el-button>
-            <el-button
-              v-if="authStore.isAdmin"
-              type="danger"
-              size="small"
-              @click="handleDelete(order)"
-            >
-              删除
-            </el-button>
-          </div>
-        </div>
+      <div class="mobile-card-list">
+        <OrderMobileCardList
+          :orders="ordersStore.orders"
+          :loading="ordersStore.loading"
+          :auth="authFlags"
+          :order-statuses="orderStatuses"
+          :get-status-type="getStatusType"
+          :get-status-text="getStatusText"
+          :format-date-time="formatDateTime"
+          :get-order-reminder-count="getOrderReminderCount"
+          :get-order-assignment-count="getOrderAssignmentCount"
+          :reminder-stats="authStore.isCustomer ? reminderStats : undefined"
+          :get-reminder-countdown="getReminderCountdown"
+          @view="viewOrder"
+          @quick-edit="handleQuickEdit"
+          @complete="handleComplete"
+          @assign="handleAssign"
+          @delete="handleDelete"
+          @reminder="handleReminder"
+          @update-status="handleStatusChange"
+          @update-completed="handleIsCompletedChange"
+          @update-can-ship="handleCanShipChange"
+          @update-estimated-ship-date="handleEstimatedShipDateChangeFromCard"
+        />
       </div>
 
       <!-- 分页 -->
@@ -550,11 +405,15 @@
         </el-form-item>
         <el-form-item label="分配给">
           <el-select
-            v-model="assignForm.assigned_to"
-            placeholder="请选择生产跟单（留空表示取消分配）"
+            v-model="assignForm.assigned_to_ids"
+            placeholder="请选择生产跟单（可多选，留空表示取消分配）"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
             clearable
             filterable
             style="width: 100%"
+            @change="handleAssignedChange"
           >
             <el-option
               v-for="pm in productionManagers"
@@ -581,7 +440,24 @@
             </el-option>
           </el-select>
           <div style="font-size: 12px; color: #909399; margin-top: 4px">
-            提示：只能分配给有权限处理该订单类型的生产跟单
+            提示：只能分配给有权限处理该订单类型的生产跟单；可多选实现协同处理
+          </div>
+        </el-form-item>
+        <el-form-item v-if="assignForm.assigned_to_ids.length > 1" label="主负责人">
+          <el-select
+            v-model="assignForm.primary_assigned_to"
+            placeholder="请选择主负责人"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="pmId in assignForm.assigned_to_ids"
+              :key="pmId"
+              :label="getProductionManagerName(pmId)"
+              :value="pmId"
+            />
+          </el-select>
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            主负责人用于在列表中展示及兼容旧版权限
           </div>
         </el-form-item>
       </el-form>
@@ -594,7 +470,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, onUnmounted, nextTick, watch } from 'vue';
+import { ref, onMounted, reactive, onUnmounted, nextTick, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture } from '@element-plus/icons-vue';
@@ -604,6 +480,8 @@ import { useNotificationsStore } from '../../stores/notifications';
 import { ordersApi } from '../../api/orders';
 import { useConfigOptions } from '../../composables/useConfigOptions';
 import { useReminderStats } from '../../composables/useReminderStats';
+// @ts-ignore
+import OrderMobileCardList from '../../components/orders/OrderMobileCardList.vue';
 // @ts-ignore - Vue SFC with script setup
 import ReminderDialog from '../../components/ReminderDialog.vue';
 // @ts-ignore - Vue SFC with script setup
@@ -612,6 +490,11 @@ import type { Order } from '../../types';
 
 const router = useRouter();
 const authStore = useAuthStore();
+const authFlags = computed(() => ({
+  isAdmin: authStore.isAdmin,
+  isProductionManager: authStore.isProductionManager,
+  isCustomer: authStore.isCustomer,
+}));
 const ordersStore = useOrdersStore();
 const notificationsStore = useNotificationsStore();
 
@@ -630,20 +513,6 @@ const isMobile = ref(window.innerWidth <= 768);
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768;
 };
-
-// 监听选项加载，确保默认值正确显示
-watch(
-  () => orderStatuses.value.length,
-  (newLength) => {
-    if (newLength > 0 && (!filters.status || filters.status === '')) {
-      // 使用 nextTick 确保 DOM 更新后再设置值
-      nextTick(() => {
-        filters.status = 'all';
-      });
-    }
-  },
-  { immediate: true }
-);
 
 // 加载客户公司列表
 const loadCompanyNames = async () => {
@@ -698,7 +567,21 @@ const filters = reactive({
   status: 'all',
   is_completed: 'all' as 'all' | boolean | undefined,
   company_name: '',
+  estimated_ship_date_range: [] as string[],
 });
+
+// 监听选项加载，确保默认值正确显示
+watch(
+  () => orderStatuses.value.length,
+  (newLength) => {
+    if (newLength > 0 && (!filters.status || filters.status === '')) {
+      nextTick(() => {
+        filters.status = 'all';
+      });
+    }
+  },
+  { immediate: true }
+);
 
 const currentPage = ref(1);
 const pageSize = ref(20);
@@ -710,13 +593,16 @@ const assignDialogVisible = ref(false);
 const currentAssignOrder = ref<Order | null>(null);
 const productionManagers = ref<any[]>([]);
 const assignForm = reactive({
-  assigned_to: undefined as number | undefined,
+  assigned_to_ids: [] as number[],
+  primary_assigned_to: undefined as number | undefined,
   order_type: 'required' as 'required' | 'scattered' | 'photo',
 });
 
 // 催货统计管理
 const reminderStats = useReminderStats();
 const reminderCountdowns = ref<Map<number, number>>(new Map());
+const getReminderCountdown = (orderId: number) =>
+  reminderCountdowns.value.get(orderId) || 0;
 
 const getStatusType = (status: string) => {
   const map: Record<string, string> = {
@@ -743,61 +629,111 @@ const getStatusText = (status: string) => {
 };
 
 // 规范化日期时间字符串，确保格式为 YYYY-MM-DD HH:mm:ss
+const stripTimezoneInfo = (value: string) => {
+  if (!value) return value;
+  if (value.includes('T')) {
+    const [datePart, timePartRaw] = value.split('T');
+    const timePart = timePartRaw
+      .replace('Z', '')
+      .split('.')[0]
+      .trim();
+    return `${datePart} ${timePart || '00:00:00'}`;
+  }
+  return value;
+};
+
 const normalizeDateTime = (date: string | null | undefined): string | null => {
   if (!date) return null;
+  
   // 如果已经是 YYYY-MM-DD HH:mm:ss 格式，直接返回
   if (date.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
     return date;
   }
+  
   // 如果只有日期部分 YYYY-MM-DD，添加默认时间
   if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
     return `${date} 00:00:00`;
   }
-  // 如果是 ISO 格式或其他格式，解析并转换为本地时间字符串
-  try {
-    const dateObj = new Date(date);
-    if (isNaN(dateObj.getTime())) return date;
-    // 使用本地时间，避免时区转换
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  } catch (error) {
-    return date;
+  
+  // 如果是 ISO 格式（带时区），需要解析为本地时间
+  // 例如：2025-11-27T16:00:00.000Z 或 2025-11-27T16:00:00+08:00
+  if (date.includes('T')) {
+    try {
+      // 使用 Date 对象解析，然后转换为本地时间字符串
+      const dateObj = new Date(date);
+      if (!isNaN(dateObj.getTime())) {
+        // 使用本地时间方法，避免时区转换
+        const year = dateObj.getFullYear();
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        const hours = String(dateObj.getHours()).padStart(2, '0');
+        const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+        const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      }
+    } catch (error) {
+      // 如果解析失败，尝试使用 stripTimezoneInfo
+      const stripped = stripTimezoneInfo(date);
+      if (stripped && stripped !== date) {
+        return stripped;
+      }
+    }
   }
+  
+  return date;
 };
 
 const formatDateTime = (date: string) => {
   if (!date) return '-';
-  try {
-    // 如果已经是 YYYY-MM-DD HH:mm:ss 格式，直接解析
-    if (date.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
-      const [datePart, timePart] = date.split(' ');
-      const [year, month, day] = datePart.split('-');
-      const [hours, minutes] = timePart.split(':');
-      return `${year}-${month}-${day} ${hours}:${minutes}`;
-    }
-    // 否则使用 Date 对象解析（避免时区转换）
-    const dateObj = new Date(date);
-    // 使用本地时间，避免时区转换
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
-  } catch (error) {
-    return date;
+  if (date.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+    const [datePart, timePart] = date.split(' ');
+    const [hours, minutes] = timePart.split(':');
+    return `${datePart} ${hours}:${minutes}`;
   }
+  if (date.includes('T')) {
+    const stripped = stripTimezoneInfo(date);
+    if (stripped) {
+      const [datePart, timePart] = stripped.split(' ');
+      const [hours, minutes] = timePart.split(':');
+      return `${datePart} ${hours}:${minutes}`;
+    }
+  }
+  return date;
 };
 
 // formatDateTimeForPicker 函数已移除，现在直接使用 v-model 绑定日期字符串
 
+const formatDateUTC = (dateObj: Date) => {
+  const year = dateObj.getUTCFullYear();
+  const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const buildEstimatedShipRange = () => {
+  let estimatedShipStart: string | undefined;
+  let estimatedShipEnd: string | undefined;
+  if (
+    filters.estimated_ship_date_range &&
+    filters.estimated_ship_date_range.length === 2
+  ) {
+    const [start, end] = filters.estimated_ship_date_range;
+    if (start) {
+      estimatedShipStart = `${start} 00:00:00`;
+    }
+    if (end) {
+      const endDate = new Date(`${end}T00:00:00Z`);
+      endDate.setUTCDate(endDate.getUTCDate() + 1);
+      estimatedShipEnd = `${formatDateUTC(endDate)} 00:00:00`;
+    }
+  }
+  return { estimatedShipStart, estimatedShipEnd };
+};
+
 const loadOrders = async () => {
   try {
+    const { estimatedShipStart, estimatedShipEnd } = buildEstimatedShipRange();
+
     await ordersStore.fetchOrders({
       page: currentPage.value,
       pageSize: pageSize.value,
@@ -806,6 +742,23 @@ const loadOrders = async () => {
       status: filters.status === 'all' ? undefined : filters.status || undefined,
       is_completed: filters.is_completed === 'all' ? undefined : (filters.is_completed as boolean | undefined),
       company_name: filters.company_name || undefined,
+      estimated_ship_start: estimatedShipStart,
+      estimated_ship_end: estimatedShipEnd,
+    });
+    
+    // 规范化所有订单的日期字段，去除时区信息，避免 el-date-picker 解析时发生偏移
+    ordersStore.orders.forEach(order => {
+      if (order.estimated_ship_date) {
+        order.estimated_ship_date = normalizeDateTime(order.estimated_ship_date) || order.estimated_ship_date;
+      }
+      if (!order.assigned_to_ids && order.assigned_to) {
+        order.assigned_to_ids = [order.assigned_to];
+      }
+      if (!order.assigned_team && order.assigned_to_name) {
+        order.assigned_team = [
+          { id: order.assigned_to || 0, username: order.assigned_to_name },
+        ];
+      }
     });
     
     // 如果是客户，加载每个订单的催货统计
@@ -892,6 +845,7 @@ const resetFilters = () => {
   filters.status = 'all';
   filters.is_completed = 'all';
   filters.company_name = '';
+  filters.estimated_ship_date_range = [];
   currentPage.value = 1;
   loadOrders();
 };
@@ -1010,35 +964,82 @@ const handleCanShipChange = async (row: Order) => {
   }
 };
 
+// 防抖映射，避免重复请求
+const dateChangePending = ref<Map<number, boolean>>(new Map());
+
 const handleEstimatedShipDateChange = async (row: Order, newValue: string | null) => {
+  // 防抖：如果该订单正在更新中，忽略新的请求
+  if (dateChangePending.value.get(row.id)) {
+    return;
+  }
+  
   const originalDate = row.estimated_ship_date;
   try {
-    // 确保日期时间字符串格式正确，避免时区转换
-    let dateValue = newValue;
-    if (dateValue) {
-      // 确保格式为 YYYY-MM-DD HH:mm:ss，如果只有日期部分，添加默认时间
+    // 标记为正在更新
+    dateChangePending.value.set(row.id, true);
+    
+    // 处理清除日期的情况
+    let dateValue: string | null | undefined = newValue;
+    
+    // 如果 el-date-picker 返回空字符串或 null，表示清除日期
+    if (dateValue === '' || dateValue === null) {
+      dateValue = null;
+    } else if (dateValue) {
+      // el-date-picker 已经返回 YYYY-MM-DD HH:mm:ss 格式，直接使用
+      // 但如果只有日期部分（长度10），添加默认时间
       if (dateValue.length === 10) {
         dateValue = `${dateValue} 00:00:00`;
       }
-      // 规范化日期时间字符串
-      dateValue = normalizeDateTime(dateValue) || dateValue;
+      // 确保格式正确，不需要再次规范化（el-date-picker 已经返回正确格式）
+      // 只有在格式不对时才进行规范化
+      if (!dateValue.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+        dateValue = normalizeDateTime(dateValue) || dateValue;
+      }
     }
+    
+    // 保存用户选择的值（用于后续比较）
+    const userSelectedValue = dateValue;
     
     // 立即更新本地值（乐观更新），避免时区转换问题
     row.estimated_ship_date = dateValue || undefined;
     
-    const response = await ordersStore.updateOrder(row.id, {
-      estimated_ship_date: dateValue || undefined,
-    });
+    // 发送更新请求：清除日期时传递 null，设置日期时传递规范化后的字符串
+    const updatePayload: any = {};
+    if (dateValue === null) {
+      updatePayload.estimated_ship_date = null;
+    } else if (dateValue) {
+      updatePayload.estimated_ship_date = dateValue;
+    } else {
+      updatePayload.estimated_ship_date = undefined;
+    }
+    const response = await ordersStore.updateOrder(row.id, updatePayload);
+    
     // 更新当前行的数据，保留所有字段（包括 company_name 等关联字段）
     const index = ordersStore.orders.findIndex((o) => o.id === row.id);
     if (index !== -1 && response.order) {
       // 合并更新后的数据，保留原有的关联字段
       ordersStore.orders[index] = { ...ordersStore.orders[index], ...response.order };
-      // 确保显示的值与选择的值一致（避免时区转换导致的值变化）
-      if (dateValue) {
-        ordersStore.orders[index].estimated_ship_date = dateValue;
-        row.estimated_ship_date = dateValue;
+      
+      // 关键修复：优先使用用户选择的值，确保显示与用户选择一致
+      // 如果后端返回的日期与用户选择的不同（可能因为时区转换），使用用户选择的值
+      if (userSelectedValue) {
+        // 使用用户选择的值，确保显示正确
+        ordersStore.orders[index].estimated_ship_date = userSelectedValue;
+        row.estimated_ship_date = userSelectedValue;
+      } else if (response.order.estimated_ship_date) {
+        // 如果用户清空了日期，但后端返回了值，规范化后端返回的值
+        const normalizedDate = normalizeDateTime(response.order.estimated_ship_date);
+        if (normalizedDate) {
+          ordersStore.orders[index].estimated_ship_date = normalizedDate;
+          row.estimated_ship_date = normalizedDate;
+        } else {
+          ordersStore.orders[index].estimated_ship_date = response.order.estimated_ship_date;
+          row.estimated_ship_date = response.order.estimated_ship_date;
+        }
+      } else {
+        // 如果用户清空了日期
+        ordersStore.orders[index].estimated_ship_date = undefined;
+        row.estimated_ship_date = undefined;
       }
     }
     ElMessage.success('预计出货日期已更新');
@@ -1046,7 +1047,17 @@ const handleEstimatedShipDateChange = async (row: Order, newValue: string | null
     ElMessage.error(error.response?.data?.error || '更新失败');
     // 恢复原值
     row.estimated_ship_date = originalDate;
+  } finally {
+    // 清除更新标记
+    dateChangePending.value.delete(row.id);
   }
+};
+
+const handleEstimatedShipDateChangeFromCard = (payload: {
+  order: Order;
+  value: string | null;
+}) => {
+  handleEstimatedShipDateChange(payload.order, payload.value);
 };
 
 // 备注编辑功能已移除，现在只在编辑对话框中编辑
@@ -1062,7 +1073,13 @@ const handleEditSuccess = () => {
 
 const handleAssign = async (row: Order) => {
   currentAssignOrder.value = { ...row };
-  assignForm.assigned_to = row.assigned_to;
+  assignForm.assigned_to_ids =
+    row.assigned_to_ids?.slice() ||
+    (row.assigned_to ? [row.assigned_to] : []);
+  assignForm.primary_assigned_to =
+    row.assigned_to_ids?.[0] ||
+    row.assigned_to ||
+    undefined;
   assignForm.order_type = (row.order_type || 'required') as 'required' | 'scattered' | 'photo';
   assignDialogVisible.value = true;
   
@@ -1078,21 +1095,45 @@ const handleAssign = async (row: Order) => {
 };
 
 const handleOrderTypeChange = () => {
-  // 当订单类型改变时，清空已选择的生产跟单（如果该生产跟单没有权限）
-  if (assignForm.assigned_to) {
-    const selectedPM = productionManagers.value.find(
-      (pm) => pm.id === assignForm.assigned_to
-    );
+  if (!assignForm.assigned_to_ids.length) return;
+
+  const filtered = assignForm.assigned_to_ids.filter((pmId) => {
+    const pm = productionManagers.value.find((item) => item.id === pmId);
     if (
-      selectedPM &&
-      selectedPM.assigned_order_types &&
-      !selectedPM.assigned_order_types.includes(assignForm.order_type)
+      pm &&
+      pm.assigned_order_types &&
+      assignForm.order_type &&
+      !pm.assigned_order_types.includes(assignForm.order_type)
     ) {
-      // 如果当前选择的生产跟单没有权限处理新选择的订单类型，清空选择
-      assignForm.assigned_to = undefined;
-      ElMessage.warning('当前选择的生产跟单没有权限处理此订单类型，已清空选择');
+      return false;
     }
+    return true;
+  });
+
+  if (filtered.length !== assignForm.assigned_to_ids.length) {
+    assignForm.assigned_to_ids = filtered;
+    ElMessage.warning('已移除无权限的生产跟单');
   }
+
+  handleAssignedChange();
+};
+
+const handleAssignedChange = () => {
+  if (!assignForm.assigned_to_ids.length) {
+    assignForm.primary_assigned_to = undefined;
+    return;
+  }
+  if (
+    !assignForm.primary_assigned_to ||
+    !assignForm.assigned_to_ids.includes(assignForm.primary_assigned_to)
+  ) {
+    assignForm.primary_assigned_to = assignForm.assigned_to_ids[0];
+  }
+};
+
+const getProductionManagerName = (id: number) => {
+  const pm = productionManagers.value.find((item) => item.id === id);
+  return pm?.admin_notes || pm?.username || `ID ${id}`;
 };
 
 const submitAssign = async () => {
@@ -1107,10 +1148,10 @@ const submitAssign = async () => {
     }
 
     // 然后分配订单
-    await ordersApi.assignOrder(
-      currentAssignOrder.value.id,
-      assignForm.assigned_to
-    );
+    await ordersApi.assignOrder(currentAssignOrder.value.id, {
+      assigned_to_ids: assignForm.assigned_to_ids,
+      primary_assigned_to: assignForm.primary_assigned_to ?? null,
+    });
     ElMessage.success('订单分配成功');
     assignDialogVisible.value = false;
     await loadOrders();
@@ -1242,6 +1283,12 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.assigned-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .order-number-cell {
   display: flex;
   align-items: center;
@@ -1286,133 +1333,6 @@ onMounted(() => {
 /* 移动端卡片列表显示 */
 .mobile-card-list {
   display: none;
-}
-
-.order-card {
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 15px;
-  margin-bottom: 15px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.card-header-section {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.card-image-section {
-  flex-shrink: 0;
-}
-
-.order-thumbnail-mobile {
-  width: 60px;
-  height: 60px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 1px solid #dcdfe6;
-  object-fit: cover;
-}
-
-.image-slot-mobile {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 60px;
-  height: 60px;
-  background: #f5f7fa;
-  color: #909399;
-  font-size: 24px;
-  border-radius: 4px;
-}
-
-.no-image-mobile {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 60px;
-  height: 60px;
-  color: #c0c4cc;
-  font-size: 14px;
-  background: #f5f7fa;
-  border-radius: 4px;
-}
-
-.card-title-section {
-  flex: 1;
-  min-width: 0;
-}
-
-.order-number {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 5px;
-  word-break: break-all;
-}
-
-.customer-order-number {
-  font-size: 14px;
-  color: #606266;
-  word-break: break-all;
-}
-
-.card-content {
-  margin-bottom: 15px;
-}
-
-.card-row {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.card-row:last-child {
-  margin-bottom: 0;
-}
-
-.card-row .label {
-  color: #909399;
-  min-width: 90px;
-  flex-shrink: 0;
-  font-weight: 500;
-}
-
-.card-row .value {
-  color: #303133;
-  flex: 1;
-  word-break: break-all;
-}
-
-.card-row .notes-text {
-  color: #606266;
-  line-height: 1.5;
-}
-
-.status-select-mobile,
-.date-picker-mobile {
-  width: 100%;
-  max-width: 200px;
-}
-
-.card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-top: 15px;
-  border-top: 1px solid #ebeef5;
-}
-
-.card-actions .el-button {
-  flex: 1;
-  min-width: 60px;
 }
 
 /* 响应式设计 */

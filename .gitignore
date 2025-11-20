@@ -1,29 +1,53 @@
+# ============================================
+# 跟单系统 - 完整的 .gitignore 配置
+# 适用于: NestJS/Express + TypeORM + Vue3/React + PostgreSQL
+# ============================================
+
+# ============================================
 # 依赖目录
+# ============================================
 node_modules/
 */node_modules/
+**/node_modules/
+.pnp
+.pnp.js
 
-# 环境变量文件（包含敏感信息）
+# ============================================
+# 环境变量文件（包含敏感信息 - 必须忽略）
+# ============================================
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+*.env
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
 backend/.env
 backend/.env.*
 !backend/.env.example
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
-private-docs/
 
+# ============================================
 # 构建输出
+# ============================================
 dist/
 build/
 */dist/
 */build/
+**/dist/
+**/build/
 *.tsbuildinfo
+.next/
+out/
+.nuxt/
+.vite/
 
+# ============================================
 # 日志文件
+# ============================================
 logs/
 *.log
 npm-debug.log*
@@ -31,71 +55,244 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+*.log.*
 
-# 运行时数据
-pids/
-*.pid
-*.seed
-*.pid.lock
+# ============================================
+# 数据库文件（本地数据库和备份文件）
+# ============================================
+# SQLite 数据库文件
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
 
-# 测试覆盖率
-coverage/
-*.lcov
-.nyc_output/
+# PostgreSQL 备份文件（必须忽略）
+*.dump
+*.sql.dump
+*.backup
+*.bak
+*-backup.sql
+*-dump.sql
+*-backup-*.sql
+*-dump-*.sql
+dump_*.sql
+backup_*.sql
+test-data.sql
+test_*.sql
+*_test_data.sql
+local_*.sql
+dev_*.sql
 
-# IDE 配置文件
+# 数据库迁移备份（自动生成的）
+migrations/*.backup
+migrations/*.bak
+
+# ============================================
+# 必须提交的数据库文档（白名单）
+# ============================================
+# 以下文件应该被提交：
+# !database/schema.sql          # 数据库结构定义
+# !database/init.sql             # 初始化脚本
+# !database/migrations/*.sql    # 迁移脚本
+# !docs/database/*.sql           # 文档性 SQL
+
+# ============================================
+# 上传文件和临时文件
+# ============================================
+uploads/
+backend/uploads/
+frontend/uploads/
+**/uploads/
+*.tmp
+*.temp
+.cache/
+.temp/
+.tmp/
+
+# ============================================
+# IDE 和编辑器配置
+# ============================================
+# VS Code
 .vscode/
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.vscode/*.code-workspace
+
+# IntelliJ IDEA / WebStorm
 .idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Cursor AI 编辑器
+.cursor/
+.cursorrules
+.cursorignore
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
 *.swp
 *.swo
 *~
-.DS_Store
+.vim/
 
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# ============================================
 # 操作系统文件
-Thumbs.db
+# ============================================
+# macOS
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+.AppleDouble
+.LSOverride
+Icon
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
 ehthumbs.db
+ehthumbs_vista.db
 Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
 
-# 临时文件
-*.tmp
-*.temp
-.cache/
-.temp/
+# Linux
+*~
+.directory
+.Trash-*
 
-# 数据库文件（如果使用本地数据库文件）
-*.sqlite
-*.sqlite3
-*.db
+# ============================================
+# 测试和覆盖率
+# ============================================
+coverage/
+*.lcov
+.nyc_output/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.hypothesis/
+test-results/
+playwright-report/
+playwright/.cache/
 
-# 包管理器锁文件（可选，根据需要保留或删除）
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# ============================================
+# 运行时和进程文件
+# ============================================
+pids/
+*.pid
+*.seed
+*.pid.lock
+*.sock
 
-# 编译后的 TypeScript 文件
+# ============================================
+# 包管理器
+# ============================================
+# 根据项目需要选择是否提交锁文件
+# package-lock.json  # 通常应该提交
+# yarn.lock          # 通常应该提交
+# pnpm-lock.yaml     # 通常应该提交
+.npm
+.yarn/
+.pnpm-store/
+
+# ============================================
+# TypeScript
+# ============================================
 *.js.map
 *.d.ts.map
+*.tsbuildinfo
 
-# Vite
-.vite/
+# ============================================
+# 私有文档和规划文档（不提交到公开仓库）
+# ============================================
+private-docs/
+docs/private/
+*.规划*.md
+*.方案*.md
+*.需求*.md
+*.总结*.md
 
-# 调试文件
-.vscode/launch.json
-*.sublime-project
-*.sublime-workspace
+# ============================================
+# 必须提交的架构文档（白名单）
+# ============================================
+# 以下文档应该被提交：
+# !ARCHITECTURE.md                    # 项目总纲
+# !docs/adr/*.md                      # 架构决策记录
+# !docs/diagrams/*.png                # C4 架构图
+# !docs/database/schema.sql            # 数据库结构文档
+# !docs/database/init.sql              # 初始化脚本文档
+# !docs/database/migrations/*.sql      # 迁移脚本文档
 
-# 备份文件
+# ============================================
+# 其他临时和缓存文件
+# ============================================
 *.bak
 *.backup
+*.old
+*.orig
+*.rej
+*.swp
+*.swo
 *~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
 
-# 上传文件目录
-backend/uploads/
-uploads/
+# ============================================
+# 安全相关
+# ============================================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets/
 
+# ============================================
+# 部署相关
+# ============================================
+.vercel
+.netlify
+.serverless/
+.serverless_nextjs/
+
+# ============================================
+# 监控和调试
+# ============================================
+*.prof
+*.trace
+*.heap
+*.cpuprofile
+*.heapsnapshot
+
+# ============================================
+# 本地开发工具
+# ============================================
+.local/
+.localenv
+.envrc

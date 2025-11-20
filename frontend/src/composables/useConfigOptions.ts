@@ -1,4 +1,7 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { ORDER_TYPE_OPTIONS } from '../constants/orderType';
+import { ORDER_STATUS_OPTIONS } from '../constants/orderStatus';
+import { useConfigStore } from '../stores/config';
 import { configsApi } from '../api/configs';
 
 interface Option {
@@ -6,107 +9,107 @@ interface Option {
   value: string;
 }
 
-/**
- * 配置选项 Composable
- * 提供订单类型、订单状态、角色等选项的获取和缓存
- */
+// 缓存选项数据，避免重复请求
+const orderTypesCache = ref<Option[]>([]);
+const orderStatusesCache = ref<Option[]>([]);
+const rolesCache = ref<Option[]>([]);
+
+const defaultRoles: Option[] = [
+  { label: '管理员', value: 'admin' },
+  { label: '生产跟单', value: 'production_manager' },
+  { label: '客户', value: 'customer' },
+];
+
 export function useConfigOptions() {
-  const orderTypes = ref<Option[]>([]);
-  const orderStatuses = ref<Option[]>([]);
-  const roles = ref<Option[]>([]);
+  const configStore = useConfigStore();
   const loading = ref(false);
 
-  // 默认选项（作为后备）
-  const defaultOrderTypes: Option[] = [
-    { label: '必发', value: 'required' },
-    { label: '散单', value: 'scattered' },
-    { label: '拍照', value: 'photo' },
-  ];
+  const orderTypes = computed<Option[]>(() => {
+    return orderTypesCache.value.length > 0 
+      ? orderTypesCache.value 
+      : [...ORDER_TYPE_OPTIONS] as Option[];
+  });
 
-  const defaultOrderStatuses: Option[] = [
-    { label: '待处理', value: 'pending' },
-    { label: '已分配', value: 'assigned' },
-    { label: '生产中', value: 'in_production' },
-    { label: '已完成', value: 'completed' },
-    { label: '已发货', value: 'shipped' },
-    { label: '已取消', value: 'cancelled' },
-  ];
+  const orderStatuses = computed<Option[]>(() => {
+    return orderStatusesCache.value.length > 0 
+      ? orderStatusesCache.value 
+      : [...ORDER_STATUS_OPTIONS] as Option[];
+  });
 
-  const defaultRoles: Option[] = [
-    { label: '管理员', value: 'admin' },
-    { label: '生产跟单', value: 'production_manager' },
-    { label: '客户', value: 'customer' },
-  ];
+  const roles = computed<Option[]>(() => {
+    // 角色选项需要管理员权限，使用 configStore
+    const storeRoles = configStore.getConfigValue<Option[]>('roles', 'general');
+    if (storeRoles && Array.isArray(storeRoles) && storeRoles.length > 0) {
+      return storeRoles;
+    }
+    return rolesCache.value.length > 0 ? rolesCache.value : defaultRoles;
+  });
 
-  /**
-   * 加载订单类型选项
-   */
-  const loadOrderTypes = async () => {
-    if (orderTypes.value.length > 0) return; // 已加载，不重复加载
-    
+  const loadOrderTypes = async (force = false) => {
+    if (!force && orderTypesCache.value.length > 0) {
+      return; // 已缓存，不重复加载
+    }
     try {
       const { data } = await configsApi.getOrderTypeOptions();
-      orderTypes.value = data?.orderTypes || defaultOrderTypes;
+      if (data?.orderTypes) {
+        orderTypesCache.value = data.orderTypes;
+      }
     } catch (error) {
       console.error('加载订单类型选项失败:', error);
-      orderTypes.value = defaultOrderTypes;
+      // 失败时使用默认值，不抛出错误
     }
   };
 
-  /**
-   * 加载订单状态选项
-   */
-  const loadOrderStatuses = async () => {
-    if (orderStatuses.value.length > 0) return; // 已加载，不重复加载
-    
+  const loadOrderStatuses = async (force = false) => {
+    if (!force && orderStatusesCache.value.length > 0) {
+      return; // 已缓存，不重复加载
+    }
     try {
       const { data } = await configsApi.getOrderStatusOptions();
-      orderStatuses.value = data?.orderStatuses || defaultOrderStatuses;
+      if (data?.orderStatuses) {
+        orderStatusesCache.value = data.orderStatuses;
+      }
     } catch (error) {
       console.error('加载订单状态选项失败:', error);
-      orderStatuses.value = defaultOrderStatuses;
+      // 失败时使用默认值，不抛出错误
     }
   };
 
-  /**
-   * 加载角色选项
-   */
-  const loadRoles = async () => {
-    if (roles.value.length > 0) return; // 已加载，不重复加载
-    
+  const loadRoles = async (force = false) => {
+    // 角色选项需要管理员权限，继续使用 configStore
     try {
-      const { data } = await configsApi.getRoleOptions();
-      roles.value = data?.roles || defaultRoles;
+      await configStore.fetchConfig('roles', {
+        type: 'general',
+        force,
+      });
     } catch (error) {
       console.error('加载角色选项失败:', error);
-      roles.value = defaultRoles;
+      // 失败时使用默认值
+      if (rolesCache.value.length === 0) {
+        rolesCache.value = defaultRoles;
+      }
     }
   };
 
-  /**
-   * 加载所有选项
-   */
-  const loadAllOptions = async () => {
+  const loadAllOptions = async (force = false) => {
     loading.value = true;
     try {
       await Promise.all([
-        loadOrderTypes(),
-        loadOrderStatuses(),
-        loadRoles(),
+        loadOrderTypes(force),
+        loadOrderStatuses(force),
+        loadRoles(force),
       ]);
     } finally {
       loading.value = false;
     }
   };
 
-  /**
-   * 刷新所有选项（强制重新加载）
-   */
   const refreshAllOptions = async () => {
-    orderTypes.value = [];
-    orderStatuses.value = [];
-    roles.value = [];
-    await loadAllOptions();
+    await loadAllOptions(true);
+  };
+
+  const refreshRoles = async () => {
+    await loadRoles(true);
   };
 
   return {
@@ -119,6 +122,7 @@ export function useConfigOptions() {
     loadRoles,
     loadAllOptions,
     refreshAllOptions,
+    refreshRoles,
   };
 }
 

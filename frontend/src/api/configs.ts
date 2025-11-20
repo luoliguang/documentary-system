@@ -1,49 +1,57 @@
 import request from '../utils/request';
 
+export interface ConfigMeta {
+  key: string;
+  type: string;
+  version?: number;
+  updatedAt?: string;
+  description?: string | null;
+  metadata?: Record<string, any> | null;
+}
+
 export const configsApi = {
-  // 获取所有配置
-  getConfigs: () => {
-    return request.get('/configs');
+  getConfigs: (params?: { type?: string }) => {
+    return request.get('/configs', { params });
   },
 
-  // 获取指定配置
-  getConfigByKey: (key: string) => {
-    return request.get(`/configs/${key}`);
+  getConfigByKey: (key: string, params?: { type?: string }) => {
+    return request.get(`/configs/${key}`, { params });
   },
 
-  // 创建配置
   createConfig: (data: {
     config_key: string;
     config_value: any;
     description?: string;
+    type?: string;
+    metadata?: Record<string, any>;
   }) => {
     return request.post('/configs', data);
   },
 
-  // 更新配置
-  updateConfig: (key: string, data: {
-    config_value: any;
-    description?: string;
-  }) => {
+  updateConfig: (
+    key: string,
+    data: {
+      config_value: any;
+      description?: string;
+      type?: string;
+      metadata?: Record<string, any>;
+    }
+  ) => {
     return request.put(`/configs/${key}`, data);
   },
 
-  // 删除配置
-  deleteConfig: (key: string) => {
-    return request.delete(`/configs/${key}`);
+  deleteConfig: (key: string, params?: { type?: string }) => {
+    return request.delete(`/configs/${key}`, { params });
   },
 
-  // 获取订单类型选项
   getOrderTypeOptions: () => {
     return request.get('/configs/options/order-types');
   },
 
-  // 获取订单状态选项
   getOrderStatusOptions: () => {
     return request.get('/configs/options/order-statuses');
   },
 
-  // 获取角色选项（仅管理员）
   getRoleOptions: () => {
     return request.get('/configs/options/roles');
   },

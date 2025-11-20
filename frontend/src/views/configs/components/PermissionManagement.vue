@@ -1,22 +1,23 @@
 <template>
   <div class="permission-management">
     <div v-loading="loading" class="permission-content">
-      <el-card v-for="(permissions, role) in rolePermissions" :key="role" class="role-card">
+      <el-card v-for="(permissions, role) in rolePermissions" :key="String(role)" class="role-card">
         <template #header>
           <div class="role-header">
-            <h4>{{ getRoleLabel(role) }}</h4>
+            <h4>{{ getRoleLabel(String(role)) }}</h4>
           </div>
         </template>
 
-        <div v-for="(resourcePerms, resource) in permissions" :key="resource" class="resource-section">
-          <h5>{{ getResourceLabel(resource) }}</h5>
+        <div v-for="(resourcePerms, resource) in permissions" :key="String(resource)" class="resource-section">
+          <h5>{{ getResourceLabel(String(resource)) }}</h5>
           <div class="permissions-list">
-            <el-checkbox
-              v-for="(value, permission) in resourcePerms"
-              :key="permission"
-              v-model="rolePermissions[role][resource][permission]"
-              :label="getPermissionLabel(permission)"
-            />
+            <template v-for="(value, permission) in resourcePerms" :key="String(permission)">
+              <el-checkbox
+                v-if="typeof value === 'boolean'"
+                v-model="rolePermissions[role][resource][permission]"
+                :label="getPermissionLabel(String(permission))"
+              />
+            </template>
           </div>
         </div>
       </el-card>
@@ -32,11 +33,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { configsApi } from '../../../api/configs';
+import { useConfigStore } from '../../../stores/config';
 
 const loading = ref(false);
 const rolePermissions = ref<Record<string, any>>({});
 const originalPermissions = ref<Record<string, any>>({});
+const configStore = useConfigStore();
+
+const CONFIG_KEY = 'role_permissions';
+const CONFIG_TYPE = 'permissions';
 
 const getRoleLabel = (role: string) => {
   const labels: Record<string, string> = {
@@ -81,9 +86,13 @@ const getPermissionLabel = (permission: string) => {
 const loadPermissions = async () => {
   loading.value = true;
   try {
-    const response = await configsApi.getConfigByKey('role_permissions');
-    rolePermissions.value = JSON.parse(JSON.stringify(response.config || {}));
-    originalPermissions.value = JSON.parse(JSON.stringify(response.config || {}));
+    const data =
+      (await configStore.fetchConfig(CONFIG_KEY, {
+        type: CONFIG_TYPE,
+        force: true,
+      })) || {};
+    rolePermissions.value = JSON.parse(JSON.stringify(data));
+    originalPermissions.value = JSON.parse(JSON.stringify(data));
   } catch (error) {
     ElMessage.error('加载权限配置失败');
   } finally {
@@ -94,8 +103,8 @@ const loadPermissions = async () => {
 const handleSave = async () => {
   loading.value = true;
   try {
-    await configsApi.updateConfig('role_permissions', {
-      config_value: rolePermissions.value,
+    await configStore.saveConfig(CONFIG_KEY, rolePermissions.value, {
+      type: CONFIG_TYPE,
     });
     originalPermissions.value = JSON.parse(JSON.stringify(rolePermissions.value));
     ElMessage.success('权限配置保存成功');

@@ -26,6 +26,8 @@ export const useOrdersStore = defineStore('orders', () => {
     customer_id?: number;
     customer_code?: string;
     company_name?: string;
+    estimated_ship_start?: string;
+    estimated_ship_end?: string;
   }) => {
     loading.value = true;
     try {

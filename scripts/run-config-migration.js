@@ -47,15 +47,36 @@ async function runMigration() {
     console.log(`🌐 主机: ${pool.options.host}:${pool.options.port}`);
     console.log('');
     
-    // 读取迁移脚本
-    const migrationPath = path.join(__dirname, '../database/migrations/007_add_reminder_soft_delete.sql');
-    if (!fs.existsSync(migrationPath)) {
-      throw new Error(`迁移脚本不存在: ${migrationPath}`);
+const migrationsDir = path.join(__dirname, '../database/migrations');
+const argFile = process.argv[2];
+
+function resolveMigrationFile() {
+  if (argFile) {
+    const fileName = argFile.endsWith('.sql') ? argFile : `${argFile}.sql`;
+    const absolutePath = path.isAbsolute(fileName)
+      ? fileName
+      : path.join(migrationsDir, fileName);
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`迁移脚本不存在: ${absolutePath}`);
     }
-    
-    const sql = fs.readFileSync(migrationPath, 'utf8');
+    return absolutePath;
+  }
+
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+  if (files.length === 0) {
+    throw new Error('未找到任何迁移脚本');
+  }
+  return path.join(migrationsDir, files[files.length - 1]);
+}
+
+const migrationPath = resolveMigrationFile();
+const sql = fs.readFileSync(migrationPath, 'utf8');
     
     // 执行迁移
+    console.log(`📝 将执行迁移脚本: ${path.basename(migrationPath)}`);
     console.log('🔄 开始事务...');
     await client.query('BEGIN');
     await client.query(sql);

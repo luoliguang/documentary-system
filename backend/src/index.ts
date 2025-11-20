@@ -10,6 +10,7 @@ import userRoutes from './routes/userRoutes.js';
 import configRoutes from './routes/configRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import followUpRoutes from './routes/followUpRoutes.js';
+import { errorHandler, notFoundHandler } from './errors/errorHandler.js';
 
 const app = express();
 
@@ -39,19 +40,11 @@ app.use('/api/configs', configRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/follow-ups', followUpRoutes);
 
-// 404 处理
-app.use((req, res) => {
-  res.status(404).json({ error: '接口不存在' });
-});
+// 404 处理（必须在所有路由之后）
+app.use(notFoundHandler);
 
-// 错误处理中间件
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('服务器错误:', err);
-  res.status(500).json({ 
-    error: '服务器内部错误',
-    message: config.nodeEnv === 'development' ? err.message : undefined
-  });
-});
+// 错误处理中间件（必须在最后）
+app.use(errorHandler);
 
 // 启动服务器
 const PORT = config.port;

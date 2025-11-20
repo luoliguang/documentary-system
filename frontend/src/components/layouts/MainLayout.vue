@@ -14,7 +14,7 @@
         <el-icon :size="24" color="#409eff" class="logo-icon">
           <EditPen />
         </el-icon>
-        <span class="logo-text">跟单系统</span>
+        <span class="logo-text">方度跟单系统</span>
       </div>
       <div class="header-right">
         <!-- 通知图标 -->

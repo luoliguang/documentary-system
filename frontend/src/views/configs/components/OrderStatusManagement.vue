@@ -45,18 +45,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import { configsApi } from '../../../api/configs';
+import { useConfigStore } from '../../../stores/config';
 
 interface OrderStatus {
   value: string;
   label: string;
 }
 
-const loading = ref(false);
-const orderStatuses = ref<OrderStatus[]>([]);
+const CONFIG_KEY = 'order_statuses';
+const CONFIG_TYPE = 'order_options';
+
+const configStore = useConfigStore();
+
+const loading = computed(() =>
+  configStore.isLoading(CONFIG_KEY, CONFIG_TYPE)
+);
+const orderStatuses = computed<OrderStatus[]>(() => {
+  return (
+    configStore.getConfigValue<OrderStatus[]>(CONFIG_KEY, CONFIG_TYPE) || []
+  );
+});
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const dialogTitle = ref('创建订单状态');
@@ -66,14 +77,10 @@ const form = ref<OrderStatus>({
 });
 
 const loadOrderStatuses = async () => {
-  loading.value = true;
   try {
-    const response = await configsApi.getConfigByKey('order_statuses') as unknown as { config: OrderStatus[] };
-    orderStatuses.value = response.config || [];
+    await configStore.fetchConfig(CONFIG_KEY, { type: CONFIG_TYPE });
   } catch (error) {
     ElMessage.error('加载订单状态列表失败');
-  } finally {
-    loading.value = false;
   }
 };
 
@@ -104,9 +111,8 @@ const handleDelete = async (row: OrderStatus) => {
     );
 
     const updatedStatuses = orderStatuses.value.filter((s) => s.value !== row.value);
-    await configsApi.updateConfig('order_statuses', { config_value: updatedStatuses });
+    await configStore.saveConfig(CONFIG_KEY, updatedStatuses, { type: CONFIG_TYPE });
     ElMessage.success('删除成功');
-    loadOrderStatuses();
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败');
@@ -134,10 +140,9 @@ const handleSubmit = async () => {
       updatedStatuses = [...orderStatuses.value, form.value];
     }
 
-    await configsApi.updateConfig('order_statuses', { config_value: updatedStatuses });
+    await configStore.saveConfig(CONFIG_KEY, updatedStatuses, { type: CONFIG_TYPE });
     ElMessage.success(isEdit.value ? '更新成功' : '创建成功');
     dialogVisible.value = false;
-    loadOrderStatuses();
   } catch (error) {
     ElMessage.error('操作失败');
   }

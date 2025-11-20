@@ -6,79 +6,94 @@
           <h3>跟进记录概览</h3>
           <p class="subtitle">查看当前负责订单的最新跟进情况</p>
         </div>
-        <el-button type="primary" @click="loadSummaries" :loading="loading">
-          刷新
-        </el-button>
+        <div class="header-actions">
+          <el-button
+            type="primary"
+            link
+            class="filter-toggle"
+            @click="toggleFilters"
+            :aria-expanded="showFilters"
+          >
+            <el-icon><Search /></el-icon>
+            {{ showFilters ? '收起筛选' : '展开筛选' }}
+          </el-button>
+          <el-button type="primary" @click="loadSummaries" :loading="loading">
+            刷新
+          </el-button>
+        </div>
       </div>
 
-      <div class="filter-bar">
-        <el-form :inline="true" :model="filters" class="filter-form">
-          <el-form-item label="关键字">
-            <el-input
-              v-model="filters.keyword"
-              placeholder="订单编号/客户/客户单号"
-              clearable
-              @keyup.enter="handleFilter"
-            />
-          </el-form-item>
-          <el-form-item label="订单状态">
-            <el-select
-              v-model="filters.status"
-              placeholder="全部"
-              clearable
-              class="filter-select"
-            >
-              <el-option
-                v-for="status in statusOptions"
-                :key="status.value"
-                :label="status.label"
-                :value="status.value"
+      <el-collapse-transition>
+        <div v-show="showFilters" class="filter-bar">
+          <el-form :inline="true" :model="filters" class="filter-form">
+            <el-form-item label="关键字">
+              <el-input
+                v-model="filters.keyword"
+                placeholder="订单编号/客户/客户单号"
+                clearable
+                @keyup.enter="handleFilter"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="有跟进">
-            <el-select
-              v-model="filters.hasFollowUp"
-              placeholder="不限"
-              clearable
-              class="filter-select"
-            >
-              <el-option label="有" value="true" />
-              <el-option label="无" value="false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="客户可见">
-            <el-select
-              v-model="filters.hasCustomerVisible"
-              placeholder="不限"
-              clearable
-              class="filter-select"
-            >
-              <el-option label="有" value="true" />
-              <el-option label="无" value="false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="制单表">
-            <el-select
-              v-model="filters.hasDocument"
-              placeholder="不限"
-              clearable
-              class="filter-select"
-            >
-              <el-option label="有" value="true" />
-              <el-option label="无" value="false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="filter-buttons">
-            <el-button type="primary" @click="handleFilter" :loading="loading">
-              查询
-            </el-button>
-            <el-button @click="resetFilters">重置</el-button>
-          </el-form-item>
-        </el-form>
-      </div>
+            </el-form-item>
+            <el-form-item label="订单状态">
+              <el-select
+                v-model="filters.status"
+                placeholder="全部"
+                clearable
+                class="filter-select"
+              >
+                <el-option
+                  v-for="status in statusOptions"
+                  :key="status.value"
+                  :label="status.label"
+                  :value="status.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="有跟进">
+              <el-select
+                v-model="filters.hasFollowUp"
+                placeholder="不限"
+                clearable
+                class="filter-select"
+              >
+                <el-option label="有" value="true" />
+                <el-option label="无" value="false" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="客户可见">
+              <el-select
+                v-model="filters.hasCustomerVisible"
+                placeholder="不限"
+                clearable
+                class="filter-select"
+              >
+                <el-option label="有" value="true" />
+                <el-option label="无" value="false" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="制单表">
+              <el-select
+                v-model="filters.hasDocument"
+                placeholder="不限"
+                clearable
+                class="filter-select"
+              >
+                <el-option label="有" value="true" />
+                <el-option label="无" value="false" />
+              </el-select>
+            </el-form-item>
+            <el-form-item class="filter-buttons">
+              <el-button type="primary" @click="handleFilter" :loading="loading">
+                查询
+              </el-button>
+              <el-button @click="resetFilters">重置</el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-collapse-transition>
 
       <el-table
+        v-if="!isMobile"
         v-loading="loading"
         :data="summaries"
         border
@@ -145,6 +160,18 @@
         </el-table-column>
       </el-table>
 
+      <div v-else class="mobile-summary-list">
+        <FollowUpSummaryCardList
+          :summaries="summaries"
+          :loading="loading"
+          :format-date-time="formatDateTime"
+          :get-status-type="getStatusType"
+          :get-status-text="getStatusText"
+          @view="openOrder"
+          @quick-follow-up="openQuickAction"
+        />
+      </div>
+
       <div v-if="pagination.totalPages > 1" class="pagination">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -167,13 +194,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Picture } from '@element-plus/icons-vue';
+import { Picture, Search } from '@element-plus/icons-vue';
 import { followUpsApi, type FollowUpSummary } from '../../api/followUps';
 // @ts-ignore - Vue SFC with script setup
 import OrderQuickAction from '../../components/OrderQuickAction.vue';
+// @ts-ignore
+import FollowUpSummaryCardList from '../../components/followups/FollowUpSummaryCardList.vue';
 
 type BooleanSelectValue = '' | 'true' | 'false' | undefined;
 
@@ -214,6 +243,9 @@ const statusOptions = [
 const quickActionVisible = ref(false);
 const currentOrderId = ref<number | null>(null);
 const router = useRouter();
+const isCompactLayout = ref(window.innerWidth <= 960);
+const isMobile = ref(window.innerWidth <= 768);
+const showFilters = ref(!isCompactLayout.value);
 
 const buildQueryParams = () => {
   const params: Record<string, any> = {
@@ -271,6 +303,37 @@ const handleFilter = () => {
   pagination.value.page = 1;
   loadSummaries();
 };
+
+const toggleFilters = () => {
+  showFilters.value = !showFilters.value;
+};
+
+const updateLayoutState = () => {
+  const width = window.innerWidth;
+  const compact = width <= 960;
+  const mobile = width <= 768;
+
+  if (compact !== isCompactLayout.value) {
+    isCompactLayout.value = compact;
+  }
+  if (mobile !== isMobile.value) {
+    isMobile.value = mobile;
+  }
+  if (!compact && !showFilters.value) {
+    showFilters.value = true;
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('resize', updateLayoutState);
+  loadSummaries();
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateLayoutState);
+});
+
+updateLayoutState();
 
 const resetFilterState = () => {
   filters.keyword = '';
@@ -331,9 +394,7 @@ const handleQuickActionSuccess = () => {
   loadSummaries();
 };
 
-onMounted(() => {
-  loadSummaries();
-});
+// 原有 onMounted 调用已与 updateLayoutState 合并
 </script>
 
 <style scoped>
@@ -366,6 +427,16 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-toggle {
+  font-size: 13px;
 }
 
 .dashboard-header h3 {
@@ -411,6 +482,10 @@ onMounted(() => {
 
 .no-image {
   color: #c0c4cc;
+}
+
+.mobile-summary-list {
+  margin-top: 8px;
 }
 </style>
 

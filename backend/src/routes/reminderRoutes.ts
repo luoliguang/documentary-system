@@ -14,6 +14,11 @@ import {
   requireAdmin,
   requireCustomer,
 } from '../middleware/auth.js';
+import { validateBody } from '../middleware/validate.js';
+import {
+  createReminderSchema,
+  respondReminderSchema,
+} from '../validators/reminderSchemas.js';
 
 const router = express.Router();
 
@@ -21,7 +26,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // 客户可以创建催货记录
-router.post('/', requireCustomer, createDeliveryReminder);
+router.post('/', requireCustomer, validateBody(createReminderSchema), createDeliveryReminder);
 
 // 获取催货记录（管理员、生产跟单和客户都可以访问，但返回结果不同）
 router.get('/', getDeliveryReminders);
@@ -30,7 +35,7 @@ router.get('/', getDeliveryReminders);
 router.get('/order/:order_id/stats', requireCustomer, getOrderReminderStats);
 
 // 管理员回复催货
-router.patch('/:id/respond', requireAdmin, respondToReminder);
+router.patch('/:id/respond', requireAdmin, validateBody(respondReminderSchema), respondToReminder);
 
 // 编辑催货消息（仅创建者）
 router.patch('/:id/message', updateReminderMessage);

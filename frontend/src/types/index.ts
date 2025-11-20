@@ -10,6 +10,7 @@ export interface User {
   email?: string;
   phone?: string;
   assigned_order_types?: string[]; // 生产跟单的订单类型权限
+  permission_overrides?: Record<string, any>; // 用户级权限覆盖
   admin_notes?: string; // 管理员备注，仅管理员可见
   created_at: string;
   updated_at: string;
@@ -23,6 +24,9 @@ export interface ShippingTrackingNumber {
   label?: string; // 自定义标签（如"主单号"、"补件单号"等）
 }
 
+import { OrderStatus } from '../constants/orderStatus';
+import { OrderType } from '../constants/orderType';
+
 // 订单类型
 export interface Order {
   id: number;
@@ -30,10 +34,13 @@ export interface Order {
   customer_id: number;
   customer_code?: string;
   customer_order_number?: string;
-  status: 'pending' | 'assigned' | 'in_production' | 'completed' | 'shipped' | 'cancelled';
-  order_type?: 'required' | 'scattered' | 'photo'; // 订单类型：必发、散单、拍照
+  status: OrderStatus;
+  order_type?: OrderType; // 订单类型：必发、散单、拍照
   assigned_to?: number; // 分配给哪个生产跟单
-  assigned_to_name?: string; // 生产跟单名称
+  assigned_to_name?: string; // 生产跟单名称（主负责人）
+  assigned_to_ids?: number[];
+  assigned_to_names?: string[];
+  assigned_team?: Array<{ id: number; username?: string | null; admin_notes?: string | null }>;
   is_completed: boolean;
   can_ship: boolean;
   order_date?: string; // 下单时间

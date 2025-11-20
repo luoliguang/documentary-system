@@ -103,11 +103,11 @@
       <el-form-item v-if="authStore.isAdmin" label="实际出货日期">
         <el-date-picker
           v-model="form.actual_ship_date"
-          type="datetime"
-          placeholder="请选择实际出货日期和时间"
+          type="date"
+          placeholder="请选择实际出货日期"
           style="width: 100%"
-          value-format="YYYY-MM-DD HH:mm:ss"
-          format="YYYY-MM-DD HH:mm"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
           clearable
         />
       </el-form-item>
@@ -347,6 +347,25 @@ const formatDateTimeForPicker = (date: string | null | undefined): string => {
   }
 };
 
+const formatDateForPicker = (date: string | null | undefined): string => {
+  if (!date) return '';
+  try {
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      // 如果后端已经是 YYYY-MM-DD，直接返回
+      const [onlyDate] = date.split(' ');
+      return onlyDate || '';
+    }
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    const [onlyDate] = (date as string).split(' ');
+    return onlyDate || '';
+  }
+};
+
 watch(
   () => props.modelValue,
   (newVal) => {
@@ -359,12 +378,12 @@ watch(
       form.can_ship = props.order.can_ship;
       form.order_date = props.order.order_date || '';
       form.estimated_ship_date = formatDateTimeForPicker(props.order.estimated_ship_date);
-      form.actual_ship_date = formatDateTimeForPicker(props.order.actual_ship_date);
+      form.actual_ship_date = formatDateForPicker(props.order.actual_ship_date);
       form.notes = props.order.notes || '';
       form.internal_notes = props.order.internal_notes || '';
       form.images = props.order.images ? [...props.order.images] : [];
       form.shipping_tracking_numbers = props.order.shipping_tracking_numbers
-        ? [...props.order.shipping_tracking_numbers]
+        ? props.order.shipping_tracking_numbers.map((tracking) => ({ ...tracking }))
         : [];
     }
   },
@@ -522,6 +541,44 @@ const removeTrackingNumber = (index: number) => {
   }
 };
 
+const buildUpdatePayload = (): Partial<Order> => {
+  const payload = JSON.parse(JSON.stringify(form)) as Record<string, any>;
+
+  ['order_date', 'estimated_ship_date', 'actual_ship_date'].forEach((field) => {
+    if (payload[field] === '') {
+      payload[field] = null;
+    }
+  });
+
+  if (Array.isArray(payload.shipping_tracking_numbers)) {
+    const filtered = payload.shipping_tracking_numbers
+      .filter((item: any) => item.number && item.number.trim())
+      .map((item: any) => ({
+        ...item,
+        number: item.number.trim(),
+        label: item.label?.trim() || undefined,
+      }));
+    // 如果过滤后为空数组，删除该字段（不发送到后端）
+    if (filtered.length === 0) {
+      delete payload.shipping_tracking_numbers;
+    } else {
+      payload.shipping_tracking_numbers = filtered;
+    }
+  }
+
+  if (Array.isArray(payload.images)) {
+    const filtered = payload.images.filter((image: string) => !!image);
+    // 如果过滤后为空数组，删除该字段（不发送到后端）
+    if (filtered.length === 0) {
+      delete payload.images;
+    } else {
+      payload.images = filtered;
+    }
+  }
+
+  return payload as Partial<Order>;
+};
+
 const handleSubmit = async () => {
   if (!formRef.value || !props.order || !props.order.id) {
     ElMessage.warning('订单信息不完整，无法更新');
@@ -532,7 +589,8 @@ const handleSubmit = async () => {
     if (valid) {
       loading.value = true;
       try {
-        await ordersStore.updateOrder(props.order!.id, form);
+        const payload = buildUpdatePayload();
+        await ordersStore.updateOrder(props.order!.id, payload);
         ElMessage.success('订单更新成功');
         updateValue(false);
         emit('success');

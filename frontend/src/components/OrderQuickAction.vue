@@ -2,11 +2,19 @@
   <el-dialog
     v-model="visible"
     title="订单快速操作"
-    :width="isMobile ? '90%' : '600px'"
+    :fullscreen="isMobile"
+    :width="isMobile ? '94%' : '600px'"
+    :top="isMobile ? '0' : '15vh'"
+    class="quick-action-dialog"
     @close="handleClose"
   >
     <div v-loading="loading">
-      <el-form :model="form" label-width="120px" v-if="order">
+      <el-form
+        v-if="order"
+        :model="form"
+        :label-width="isMobile ? 'auto' : '120px'"
+        :label-position="isMobile ? 'top' : 'right'"
+      >
         <el-form-item label="订单编号">
           <el-input :value="order.order_number" readonly />
         </el-form-item>
@@ -60,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { ordersApi } from '../api/orders';
 import { followUpsApi } from '../api/followUps';
@@ -96,6 +104,19 @@ const form = ref({
   is_visible_to_customer: true,
 });
 
+const stripTimezoneInfo = (value: string) => {
+  if (!value) return value;
+  if (value.includes('T')) {
+    const [datePart, timePartRaw] = value.split('T');
+    const timePart = timePartRaw
+      .replace('Z', '')
+      .split('.')[0]
+      .trim();
+    return `${datePart} ${timePart || '00:00:00'}`;
+  }
+  return value;
+};
+
 // 规范化日期时间字符串
 const normalizeDateTime = (date: string | null | undefined): string | null => {
   if (!date) return null;
@@ -105,19 +126,11 @@ const normalizeDateTime = (date: string | null | undefined): string | null => {
   if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
     return `${date} 00:00:00`;
   }
-  try {
-    const dateObj = new Date(date);
-    if (isNaN(dateObj.getTime())) return date;
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  } catch (error) {
-    return date;
+  const stripped = stripTimezoneInfo(date);
+  if (stripped && stripped !== date) {
+    return stripped;
   }
+  return date;
 };
 
 // 监听订单ID变化，加载订单信息
@@ -146,12 +159,16 @@ const loadOrderData = async () => {
     const response = await ordersApi.getOrderById(props.orderId);
     order.value = response.order;
     
+    const normalizedEstimated =
+      order.value.estimated_ship_date
+        ? normalizeDateTime(order.value.estimated_ship_date)
+        : null;
+    order.value.estimated_ship_date = normalizedEstimated || undefined;
+
     // 初始化表单
     form.value.is_completed = order.value.is_completed || false;
     form.value.can_ship = order.value.can_ship || false;
-    form.value.estimated_ship_date = order.value.estimated_ship_date
-      ? normalizeDateTime(order.value.estimated_ship_date)
-      : null;
+    form.value.estimated_ship_date = normalizedEstimated;
     form.value.follow_up_content = '';
     form.value.is_visible_to_customer = true;
   } catch (error) {
@@ -180,12 +197,28 @@ const submit = async () => {
     if (form.value.can_ship !== order.value.can_ship) {
       updateData.can_ship = form.value.can_ship;
     }
-    if (form.value.estimated_ship_date !== order.value.estimated_ship_date) {
+    const normalizedOriginal =
+      order.value.estimated_ship_date &&
+      normalizeDateTime(order.value.estimated_ship_date);
+    const normalizedNew = form.value.estimated_ship_date
+      ? normalizeDateTime(form.value.estimated_ship_date)
+      : null;
+
+    if (normalizedNew !== normalizedOriginal) {
       updateData.estimated_ship_date = form.value.estimated_ship_date || undefined;
     }
 
     if (Object.keys(updateData).length > 0) {
-      await ordersApi.updateOrder(order.value.id, updateData);
+      const response = await ordersApi.updateOrder(order.value.id, updateData);
+      if (response.order?.estimated_ship_date) {
+        const normalizedServer = normalizeDateTime(
+          response.order.estimated_ship_date as string
+        );
+        order.value.estimated_ship_date = normalizedServer || undefined;
+        form.value.estimated_ship_date = normalizedServer;
+      } else if (!form.value.estimated_ship_date) {
+        order.value.estimated_ship_date = undefined;
+      }
     }
 
     // 创建跟进记录
@@ -212,9 +245,32 @@ const submit = async () => {
 const handleClose = () => {
   visible.value = false;
 };
+
+const updateIsMobile = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
+
+onMounted(() => {
+  updateIsMobile();
+  window.addEventListener('resize', updateIsMobile);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateIsMobile);
+});
 </script>
 
 <style scoped>
-/* 样式可以根据需要添加 */
+.quick-action-dialog :deep(.el-dialog__body) {
+  padding-top: 10px;
+}
+
+@media (max-width: 768px) {
+  .quick-action-dialog :deep(.el-dialog__body) {
+    height: calc(100vh - 120px);
+    overflow-y: auto;
+    padding-bottom: 24px;
+  }
+}
 </style>
 
