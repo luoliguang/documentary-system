@@ -2,7 +2,13 @@ export interface User {
   id: number;
   username: string;
   customer_code?: string;
-  role: 'customer' | 'admin' | 'production_manager';
+  role:
+    | 'customer'
+    | 'admin'
+    | 'production_manager'
+    | 'customer_service'
+    | 'follow_leader'
+    | 'sales_leader';
   company_name?: string;
   contact_name?: string;
   email?: string;

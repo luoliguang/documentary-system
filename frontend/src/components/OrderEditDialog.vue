@@ -11,7 +11,7 @@
       :rules="rules"
       label-width="120px"
     >
-      <el-form-item v-if="authStore.isAdmin" label="工厂订单编号" prop="order_number">
+      <el-form-item v-if="authStore.canManageOrders" label="工厂订单编号" prop="order_number">
         <el-input
           v-model="form.order_number"
           placeholder="请输入工厂订单编号"
@@ -20,7 +20,7 @@
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="客户订单编号" prop="customer_order_number">
+      <el-form-item v-if="authStore.canManageOrders" label="客户订单编号" prop="customer_order_number">
         <el-input
           v-model="form.customer_order_number"
           placeholder="请输入客户订单编号"
@@ -29,7 +29,7 @@
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="客户" prop="customer_id">
+      <el-form-item v-if="authStore.canManageOrders" label="客户" prop="customer_id">
         <el-select
           v-model="form.customer_id"
           placeholder="请选择客户"
@@ -45,7 +45,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="订单类型" prop="order_type">
+      <el-form-item v-if="authStore.canManageOrders" label="订单类型" prop="order_type">
         <el-select v-model="form.order_type" placeholder="请选择订单类型" style="width: 100%">
           <el-option
             v-for="type in orderTypes"
@@ -56,7 +56,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="订单状态" prop="status">
+      <el-form-item v-if="authStore.canManageOrders" label="订单状态" prop="status">
         <el-select v-model="form.status" placeholder="请选择状态" style="width: 100%">
           <el-option
             v-for="status in orderStatuses"
@@ -75,7 +75,7 @@
         <el-switch v-model="form.can_ship" />
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="下单时间">
+      <el-form-item v-if="authStore.canManageOrders" label="下单时间">
         <el-date-picker
           v-model="form.order_date"
           type="datetime"
@@ -100,7 +100,7 @@
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="实际出货日期">
+      <el-form-item v-if="authStore.canManageOrders" label="实际出货日期">
         <el-date-picker
           v-model="form.actual_ship_date"
           type="date"
@@ -121,7 +121,7 @@
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="内部备注">
+      <el-form-item v-if="authStore.canManageOrders" label="内部备注">
         <el-input
           v-model="form.internal_notes"
           type="textarea"
@@ -130,7 +130,7 @@
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="订单图片">
+      <el-form-item v-if="authStore.canManageOrders" label="订单图片">
         <!-- 粘贴提示区域 - 始终显示 -->
         <div class="paste-hint-box">
           <div class="paste-hint-content">
@@ -197,7 +197,7 @@
         </div>
       </el-form-item>
 
-      <el-form-item v-if="authStore.isAdmin" label="发货单号">
+      <el-form-item v-if="authStore.canManageOrders" label="发货单号">
         <div style="width: 100%">
           <div v-if="form.shipping_tracking_numbers && form.shipping_tracking_numbers.length > 0" class="tracking-list">
             <div
@@ -605,7 +605,7 @@ const handleSubmit = async () => {
 
 // 加载客户列表
 const loadCustomers = async () => {
-  if (!authStore.isAdmin) return; // 只有管理员需要加载客户列表
+if (!authStore.canManageOrders) return; // 只有管理权限的角色需要加载客户列表
   
   try {
     const response = await ordersApi.getCustomers();

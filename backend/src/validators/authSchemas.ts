@@ -14,11 +14,17 @@ export const loginSchema = z.object({
 /**
  * 修改密码验证 Schema
  */
-export const changePasswordSchema = z.object({
-  old_password: z.string().min(1, '旧密码不能为空'),
-  new_password: z.string().min(6, '新密码至少6个字符').max(200, '密码不能超过200个字符'),
-}).refine(
-  (data) => data.old_password !== data.new_password,
-  { message: '新密码不能与旧密码相同', path: ['new_password'] }
-);
+export const changePasswordSchema = z
+  .object({
+    old_password: z.string().trim().min(1, '旧密码不能为空'),
+    new_password: z
+      .string()
+      .trim()
+      .min(6, '新密码至少6个字符')
+      .max(200, '密码不能超过200个字符'),
+  })
+  .refine(
+    (data) => data.old_password !== data.new_password,
+    { message: '新密码不能与旧密码相同', path: ['new_password'] }
+  );
 

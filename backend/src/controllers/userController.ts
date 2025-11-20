@@ -741,6 +741,8 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     const {
       account,
       username,
+      role,
+      customer_code,
       company_name,
       contact_name,
       email,
@@ -757,6 +759,15 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: '用户不存在' });
     }
+
+    const existingUser = userResult.rows[0];
+    const allowedRoles: Array<'admin' | 'production_manager' | 'customer'> = [
+      'admin',
+      'production_manager',
+      'customer',
+    ];
+    let targetRole: 'admin' | 'production_manager' | 'customer' =
+      existingUser.role;
 
     const updates: string[] = [];
     const values: any[] = [];
@@ -821,6 +832,50 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       values.push(username);
     }
 
+    // 更新角色
+    if (role !== undefined) {
+      if (!allowedRoles.includes(role)) {
+        return res.status(400).json({ error: '无效的角色类型' });
+      }
+      targetRole = role;
+      updates.push(`role = $${paramIndex++}`);
+      values.push(role);
+    }
+
+    // 更新客户编号（仅客户角色）
+    if (targetRole === 'customer') {
+      let finalCustomerCode =
+        customer_code !== undefined
+          ? customer_code
+          : existingUser.customer_code;
+      if (typeof finalCustomerCode === 'string') {
+        finalCustomerCode = finalCustomerCode.trim();
+      }
+      if (!finalCustomerCode) {
+        return res
+          .status(400)
+          .json({ error: '客户角色必须提供客户编号' });
+      }
+
+      const existingCode = await pool.query(
+        'SELECT id FROM users WHERE customer_code = $1 AND id != $2',
+        [finalCustomerCode, id]
+      );
+      if (existingCode.rows.length > 0) {
+        return res.status(400).json({ error: '客户编号已被使用' });
+      }
+
+      updates.push(`customer_code = $${paramIndex++}`);
+      values.push(finalCustomerCode);
+    } else if (
+      customer_code !== undefined ||
+      existingUser.customer_code !== null
+    ) {
+      // 非客户角色清空客户编号
+      updates.push(`customer_code = $${paramIndex++}`);
+      values.push(null);
+    }
+
     if (company_name !== undefined) {
       updates.push(`company_name = $${paramIndex++}`);
       values.push(company_name);
@@ -854,9 +909,28 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         console.warn('admin_notes 字段不存在，跳过更新');
       }
     }
-    if (assigned_order_types !== undefined) {
+    const existingAssignedTypes = Array.isArray(
+      existingUser.assigned_order_types
+    )
+      ? existingUser.assigned_order_types
+      : existingUser.assigned_order_types
+      ? JSON.parse(existingUser.assigned_order_types)
+      : [];
+
+    if (targetRole === 'production_manager') {
+      const finalAssigned =
+        Array.isArray(assigned_order_types) && assigned_order_types.length > 0
+          ? assigned_order_types
+          : existingAssignedTypes;
       updates.push(`assigned_order_types = $${paramIndex++}`);
-      values.push(JSON.stringify(assigned_order_types));
+      values.push(JSON.stringify(finalAssigned || []));
+    } else if (
+      assigned_order_types !== undefined ||
+      (Array.isArray(existingAssignedTypes) &&
+        existingAssignedTypes.length > 0)
+    ) {
+      updates.push(`assigned_order_types = $${paramIndex++}`);
+      values.push(JSON.stringify([]));
     }
     if (is_active !== undefined) {
       updates.push(`is_active = $${paramIndex++}`);

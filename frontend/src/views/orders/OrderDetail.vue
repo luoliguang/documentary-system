@@ -24,14 +24,14 @@
               </span>
             </el-button>
             <el-button
-              v-if="authStore.isAdmin && !order?.is_completed"
+              v-if="authStore.canManageOrders && !order?.is_completed"
               type="success"
               @click="handleComplete"
             >
               完成任务
             </el-button>
             <el-button
-              v-if="authStore.isAdmin && order"
+              v-if="authStore.canManageOrders && order"
               type="primary"
               @click="handleEditOrder"
             >
@@ -68,7 +68,7 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item
-            v-if="authStore.isAdmin || authStore.isProductionManager"
+            v-if="authStore.canManageOrders || authStore.isProductionManager"
             label="生产跟单"
           >
             <span>{{ getAssignedNames(order) || '未分配' }}</span>
@@ -99,7 +99,7 @@
 
         <!-- 客户信息 -->
         <el-descriptions
-          v-if="authStore.isAdmin"
+          v-if="authStore.canManageOrders"
           title="客户信息"
           :column="2"
           border
@@ -172,7 +172,7 @@
         </div>
 
         <!-- 内部备注（仅管理员可见） -->
-        <div v-if="authStore.isAdmin && order.internal_notes" style="margin-top: 20px">
+        <div v-if="authStore.canManageOrders && order.internal_notes" style="margin-top: 20px">
           <h4>内部备注</h4>
           <el-input
             v-model="order.internal_notes"

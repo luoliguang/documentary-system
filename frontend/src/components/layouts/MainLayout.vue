@@ -19,7 +19,7 @@
       <div class="header-right">
         <!-- 通知图标 -->
         <el-badge
-          v-if="authStore.isAdmin || authStore.isProductionManager || authStore.isCustomer"
+          v-if="authStore.canManageOrders || authStore.isProductionManager || authStore.isCustomer"
           :value="notificationsStore.unreadCount"
           :hidden="notificationsStore.unreadCount === 0"
           class="notification-badge"
@@ -46,6 +46,8 @@
                     ? '管理员'
                     : authStore.user?.role === 'production_manager'
                     ? '生产跟单'
+                    : (authStore.user?.role as string) === 'customer_service'
+                    ? '客服'
                     : '客户'
                 }}：{{ authStore.user?.username }}
               </el-dropdown-item>
@@ -69,7 +71,7 @@
             <span>订单列表</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageReminders"
             index="/reminders"
           >
             <el-icon><Bell /></el-icon>
@@ -90,7 +92,7 @@
             <span>催单记录</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageOrders"
             index="/orders/create"
           >
             <el-icon><Plus /></el-icon>
@@ -101,14 +103,14 @@
             <span>个人中心</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageSystem"
             index="/users"
           >
             <el-icon><Setting /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageSystem"
             index="/configs"
           >
             <el-icon><Tools /></el-icon>
@@ -136,7 +138,7 @@
             <span>订单列表</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageReminders"
             index="/reminders"
           >
             <el-icon><Bell /></el-icon>
@@ -157,7 +159,7 @@
             <span>催单记录</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageOrders"
             index="/orders/create"
           >
             <el-icon><Plus /></el-icon>
@@ -168,14 +170,14 @@
             <span>个人中心</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageSystem"
             index="/users"
           >
             <el-icon><Setting /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
           <el-menu-item
-            v-if="authStore.isAdmin"
+            v-if="authStore.canManageSystem"
             index="/configs"
           >
             <el-icon><Tools /></el-icon>
@@ -231,7 +233,7 @@ const handleMenuSelect = () => {
 onMounted(() => {
   if (
     authStore.isAuthenticated &&
-    (authStore.isAdmin || authStore.isProductionManager || authStore.isCustomer)
+    (authStore.canManageOrders || authStore.isProductionManager || authStore.isCustomer)
   ) {
     notificationsStore.startPolling();
   }

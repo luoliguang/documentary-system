@@ -39,7 +39,7 @@
               />
             </el-form-item>
             <el-form-item 
-              v-if="authStore.isAdmin || authStore.isProductionManager" 
+              v-if="authStore.canManageReminders" 
               label="客户公司"
             >
               <el-input
@@ -129,7 +129,7 @@
           </template>
         </el-table-column>
         <el-table-column
-          v-if="authStore.isAdmin || authStore.isProductionManager"
+          v-if="authStore.canManageReminders"
           prop="company_name"
           label="客户公司"
           width="200"
@@ -173,7 +173,7 @@
               编辑消息
             </el-button>
             <el-button
-              v-if="(authStore.isAdmin || authStore.isProductionManager) && row.admin_response"
+              v-if="authStore.canManageReminders && row.admin_response"
               type="primary"
               size="small"
               link
@@ -182,7 +182,7 @@
               编辑回复
             </el-button>
             <el-button
-              v-if="authStore.isAdmin && !row.is_resolved"
+              v-if="authStore.canManageReminders && !row.is_resolved"
               type="primary"
               size="small"
               link
@@ -191,7 +191,7 @@
               回复
             </el-button>
             <el-button
-              v-if="authStore.isAdmin || (authStore.isCustomer && row.customer_id === authStore.user?.id)"
+              v-if="authStore.canManageReminders || (authStore.isCustomer && row.customer_id === authStore.user?.id)"
               type="danger"
               size="small"
               link
@@ -235,7 +235,7 @@
               <div class="customer-order-number" v-if="reminder.customer_order_number">
                 客户编号：{{ reminder.customer_order_number }}
               </div>
-              <div class="company-name" v-if="(authStore.isAdmin || authStore.isProductionManager) && reminder.company_name">
+              <div class="company-name" v-if="authStore.canManageReminders && reminder.company_name">
                 {{ reminder.company_name }}
               </div>
             </div>
@@ -278,7 +278,7 @@
               编辑消息
             </el-button>
             <el-button
-              v-if="(authStore.isAdmin || authStore.isProductionManager) && reminder.admin_response"
+              v-if="authStore.canManageReminders && reminder.admin_response"
               type="primary"
               size="small"
               @click="handleEditResponse(reminder)"
@@ -286,7 +286,7 @@
               编辑回复
             </el-button>
             <el-button
-              v-if="authStore.isAdmin && !reminder.is_resolved"
+              v-if="authStore.canManageReminders && !reminder.is_resolved"
               type="primary"
               size="small"
               @click="handleRespond(reminder)"
@@ -294,7 +294,7 @@
               回复
             </el-button>
             <el-button
-              v-if="authStore.isAdmin || (authStore.isCustomer && reminder.customer_id === authStore.user?.id)"
+              v-if="authStore.canManageReminders || (authStore.isCustomer && reminder.customer_id === authStore.user?.id)"
               type="danger"
               size="small"
               @click="handleDelete(reminder)"

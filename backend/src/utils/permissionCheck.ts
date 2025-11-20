@@ -68,6 +68,37 @@ export async function checkPermission(
  */
 function getDefaultPermission(role: string, resource: string, action: string): boolean {
   const defaultPermissions: PermissionConfig = {
+    customer_service: {
+      orders: {
+        can_view_all: true,
+        can_view_assigned: true,
+        can_view_own: true,
+        can_create: true,
+        can_update: true,
+        can_delete: true,
+        can_assign: true,
+        can_update_completed: true,
+        can_update_can_ship: true,
+        can_update_estimated_ship_date: true,
+        can_update_notes: true,
+        can_update_status: true,
+        can_update_order_type: true,
+        can_view_internal_notes: true,
+      },
+      reminders: {
+        can_view_all: true,
+        can_update: true,
+      },
+      users: {
+        can_view: true,
+        can_create: true,
+        can_update: true,
+      },
+      configs: {
+        can_view: false,
+        can_update: false,
+      },
+    },
     production_manager: {
       orders: {
         can_view_assigned: true,

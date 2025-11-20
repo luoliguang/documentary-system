@@ -106,7 +106,7 @@
             <div class="notification-actions">
               <!-- 催单通知：管理员可以分配任务 -->
               <el-button
-                v-if="notification.type === 'reminder' && authStore.isAdmin && notification.related_type === 'order'"
+                v-if="notification.type === 'reminder' && authStore.canManageOrders && notification.related_type === 'order'"
                 type="primary"
                 size="small"
                 @click.stop="handleAssignOrder(notification)"
@@ -170,7 +170,7 @@
 
     <!-- 分配订单对话框 -->
     <OrderAssignDialog
-      v-if="authStore.isAdmin"
+      v-if="authStore.canManageOrders"
       v-model="assignDialogVisible"
       :order-id="assignOrderId"
       @success="handleAssignSuccess"

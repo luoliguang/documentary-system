@@ -15,6 +15,7 @@ import {
 import {
   authenticateToken,
   requireAdmin,
+  requireAdminOrSupport,
   requireCustomer,
 } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -36,10 +37,10 @@ router.use(authenticateToken);
 router.get('/', validateQuery(getOrdersQuerySchema), getOrders);
 
 // 获取所有客户列表（仅管理员）- 必须在 /:id 之前
-router.get('/customers/list', requireAdmin, getCustomers);
+router.get('/customers/list', requireAdminOrSupport, getCustomers);
 
 // 获取所有生产跟单列表（仅管理员）
-router.get('/production-managers/list', requireAdmin, getProductionManagers);
+router.get('/production-managers/list', requireAdminOrSupport, getProductionManagers);
 
 // 获取订单状态历史
 router.get('/:id/history', getOrderStatusHistory);
@@ -53,12 +54,12 @@ router.patch(
 );
 
 // 以下路由仅管理员可访问
-router.post('/', requireAdmin, validateBody(createOrderSchema), createOrder);
+router.post('/', requireAdminOrSupport, validateBody(createOrderSchema), createOrder);
 // 更新订单：管理员和生产跟单都可以访问（权限在控制器中检查）
 router.put('/:id', validateBody(updateOrderSchema), updateOrder);
-router.patch('/:id/complete', requireAdmin, validateBody(completeOrderSchema), completeOrder);
-router.post('/:id/assign', requireAdmin, validateBody(assignOrderSchema), assignOrderToProductionManager);
-router.delete('/:id', requireAdmin, deleteOrder);
+router.patch('/:id/complete', requireAdminOrSupport, validateBody(completeOrderSchema), completeOrder);
+router.post('/:id/assign', requireAdminOrSupport, validateBody(assignOrderSchema), assignOrderToProductionManager);
+router.delete('/:id', requireAdminOrSupport, deleteOrder);
 
 // 获取订单详情（必须在最后，避免匹配到其他路由）
 router.get('/:id', getOrderById);

@@ -16,6 +16,63 @@ interface OrderQueryParams {
   estimated_ship_end?: string;
 }
 
+const normalizeOrderPayload = (data: Partial<Order>) => {
+  const cleaned: Record<string, any> = { ...data };
+
+  const nullableDateFields: Array<keyof Order> = [
+    'order_date',
+    'estimated_ship_date',
+    'actual_ship_date',
+  ];
+
+  nullableDateFields.forEach((field) => {
+    if (field in cleaned && cleaned[field] === '') {
+      cleaned[field] = null;
+    }
+  });
+
+  if (typeof cleaned.actual_ship_date === 'string' && cleaned.actual_ship_date) {
+    const [onlyDate] = cleaned.actual_ship_date.split(' ');
+    cleaned.actual_ship_date = onlyDate || cleaned.actual_ship_date;
+  }
+
+  ['customer_code', 'customer_order_number', 'notes', 'internal_notes'].forEach((field) => {
+    if (cleaned[field] === '') {
+      delete cleaned[field];
+    }
+  });
+
+  if (
+    'shipping_tracking_numbers' in cleaned &&
+    Array.isArray(cleaned.shipping_tracking_numbers)
+  ) {
+    const filtered = cleaned.shipping_tracking_numbers
+      .filter((item: any) => item.number && item.number.trim())
+      .map((item: any) => ({
+        ...item,
+        number: item.number.trim(),
+        label: item.label?.trim() || undefined,
+      }));
+
+    if (filtered.length === 0) {
+      delete cleaned.shipping_tracking_numbers;
+    } else {
+      cleaned.shipping_tracking_numbers = filtered;
+    }
+  }
+
+  if ('images' in cleaned && Array.isArray(cleaned.images)) {
+    const filtered = cleaned.images.filter((image: string) => !!image);
+    if (filtered.length === 0) {
+      delete cleaned.images;
+    } else {
+      cleaned.images = filtered;
+    }
+  }
+
+  return cleaned;
+};
+
 export const ordersApi = {
   // 获取订单列表
   getOrders: (params?: OrderQueryParams): Promise<OrdersResponse> => {
@@ -29,65 +86,20 @@ export const ordersApi = {
 
   // 创建订单（仅管理员）
   createOrder: (data: Partial<Order>): Promise<{ message: string; order: Order }> => {
-    return api.post('/orders', data);
+    const cleanedData = normalizeOrderPayload(data);
+    return api.post('/orders', cleanedData);
   },
 
   // 更新订单（管理员和生产跟单，具体权限由后端权限配置决定）
   updateOrder: (id: number, data: Partial<Order>): Promise<{ message: string; order: Order }> => {
-    // 确保清除日期时传递 null 而不是 undefined
-    // 如果 estimated_ship_date 在 data 中且值为 null，明确传递 null
-    const cleanedData: any = { ...data };
+    const cleanedData: any = normalizeOrderPayload(data);
 
-    const nullableDateFields: Array<keyof Order> = [
-      'order_date',
-      'estimated_ship_date',
-      'actual_ship_date',
-    ];
-
-    nullableDateFields.forEach((field) => {
-      if (field in cleanedData && cleanedData[field] === '') {
-        cleanedData[field] = null;
-      }
-    });
-
-    if ('estimated_ship_date' in data) {
-      if (data.estimated_ship_date === null) {
-        cleanedData.estimated_ship_date = null;
-      } else if (data.estimated_ship_date === undefined) {
-        // 如果明确设置为 undefined（清除），也传递 null
-        cleanedData.estimated_ship_date = null;
-      }
-      // 如果是有值的情况，保持原样
+    if ('estimated_ship_date' in data && data.estimated_ship_date === undefined) {
+      cleanedData.estimated_ship_date = null;
     }
 
-    if ('actual_ship_date' in cleanedData && typeof cleanedData.actual_ship_date === 'string') {
-      const [onlyDate] = cleanedData.actual_ship_date.split(' ');
-      cleanedData.actual_ship_date = onlyDate || cleanedData.actual_ship_date;
-    }
-
-    if (
-      'shipping_tracking_numbers' in cleanedData &&
-      Array.isArray(cleanedData.shipping_tracking_numbers)
-    ) {
-      const filtered = cleanedData.shipping_tracking_numbers.filter(
-        (item: any) => item.number && item.number.trim()
-      );
-      // 如果过滤后为空数组，删除该字段（不发送到后端）
-      if (filtered.length === 0) {
-        delete cleanedData.shipping_tracking_numbers;
-      } else {
-        cleanedData.shipping_tracking_numbers = filtered;
-      }
-    }
-
-    // 处理 images 字段：如果为空数组，删除该字段
-    if ('images' in cleanedData && Array.isArray(cleanedData.images)) {
-      const filtered = cleanedData.images.filter((image: string) => !!image);
-      if (filtered.length === 0) {
-        delete cleanedData.images;
-      } else {
-        cleanedData.images = filtered;
-      }
+    if ('actual_ship_date' in data && data.actual_ship_date === undefined) {
+      cleanedData.actual_ship_date = null;
     }
 
     return api.put(`/orders/${id}`, cleanedData);

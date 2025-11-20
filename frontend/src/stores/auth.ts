@@ -10,10 +10,21 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null
   );
 
+  const currentRole = computed<string>(() => user.value?.role ?? '');
+
   const isAuthenticated = computed(() => !!token.value);
-  const isAdmin = computed(() => user.value?.role === 'admin');
-  const isCustomer = computed(() => user.value?.role === 'customer');
-  const isProductionManager = computed(() => user.value?.role === 'production_manager');
+  const isAdmin = computed(() => currentRole.value === 'admin');
+  const isCustomer = computed(() => currentRole.value === 'customer');
+  const isProductionManager = computed(() => currentRole.value === 'production_manager');
+  const isCustomerService = computed(() => currentRole.value === 'customer_service');
+
+  const canManageOrders = computed(() =>
+    ['admin', 'customer_service', 'follow_leader', 'sales_leader'].includes(currentRole.value)
+  );
+  const canManageReminders = computed(() =>
+    ['admin', 'customer_service', 'follow_leader'].includes(currentRole.value)
+  );
+  const canManageSystem = computed(() => ['admin'].includes(currentRole.value));
 
   // 登录
   const login = async (account: string, password: string) => {
@@ -59,6 +70,10 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isCustomer,
     isProductionManager,
+    isCustomerService,
+    canManageOrders,
+    canManageReminders,
+    canManageSystem,
     login,
     logout,
     fetchCurrentUser,

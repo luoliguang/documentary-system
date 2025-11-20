@@ -56,7 +56,7 @@
             <div class="status-item">
               <span class="title">完成</span>
               <el-switch
-                v-if="auth.isAdmin || auth.isProductionManager"
+                v-if="auth.canManageOrders || auth.isProductionManager"
                 v-model="order.is_completed"
                 size="small"
                 @change="emit('update-completed', order)"
@@ -68,7 +68,7 @@
             <div class="status-item">
               <span class="title">可出货</span>
               <el-switch
-                v-if="auth.isAdmin || auth.isProductionManager"
+                v-if="auth.canManageOrders || auth.isProductionManager"
                 v-model="order.can_ship"
                 size="small"
                 @change="emit('update-can-ship', order)"
@@ -82,13 +82,13 @@
 
         <section class="card-meta">
           <div
-            v-if="auth.isAdmin || auth.isProductionManager"
+            v-if="auth.canManageOrders || auth.isProductionManager"
             class="meta-line"
           >
             <span class="meta-label">生产跟单</span>
             <span class="meta-value">{{ getAssignedNames(order) || '未分配' }}</span>
           </div>
-          <div v-if="auth.isAdmin && order.company_name" class="meta-line">
+          <div v-if="auth.canManageOrders && order.company_name" class="meta-line">
             <span class="meta-label">客户公司</span>
             <span class="meta-value">{{ order.company_name }}</span>
           </div>
@@ -96,7 +96,7 @@
             <span class="meta-label">预计出货</span>
             <div class="meta-control">
               <el-date-picker
-                v-if="auth.isAdmin || auth.isProductionManager"
+                v-if="auth.canManageOrders || auth.isProductionManager"
                 v-model="order.estimated_ship_date"
                 type="datetime"
                 placeholder="选择日期时间"
@@ -116,7 +116,7 @@
         </section>
 
         <section
-          v-if="auth.isAdmin"
+          v-if="auth.canManageOrders"
           class="card-control"
         >
           <div class="control-item">
@@ -138,7 +138,7 @@
         </section>
 
         <section
-          v-if="auth.isCustomer || auth.isAdmin || auth.isProductionManager"
+          v-if="auth.isCustomer || auth.canManageOrders || auth.isProductionManager"
           class="card-reminder"
         >
           <div class="reminder-info" v-if="auth.isCustomer">
@@ -168,7 +168,7 @@
             查看
           </el-button>
           <el-button
-            v-if="auth.isAdmin"
+            v-if="auth.canManageOrders"
             type="success"
             size="small"
             @click="emit('quick-edit', order)"
@@ -176,7 +176,7 @@
             编辑
           </el-button>
           <el-button
-            v-if="auth.isAdmin && !order.is_completed"
+            v-if="auth.canManageOrders && !order.is_completed"
             type="success"
             size="small"
             @click="emit('complete', order.id)"
@@ -184,7 +184,7 @@
             完成
           </el-button>
           <el-button
-            v-if="auth.isAdmin"
+            v-if="auth.canManageOrders"
             :type="order.assigned_to_ids?.length ? 'success' : 'info'"
             size="small"
             @click="emit('assign', order)"
@@ -192,7 +192,7 @@
             {{ order.assigned_to_ids?.length ? '已分配' : '分配' }}
           </el-button>
           <el-button
-            v-if="auth.isAdmin"
+            v-if="auth.canManageOrders"
             type="danger"
             size="small"
             @click="emit('delete', order)"
@@ -210,7 +210,8 @@ import { Picture } from '@element-plus/icons-vue';
 import type { Order } from '../../types';
 
 interface AuthFlags {
-  isAdmin: boolean;
+  canManageOrders: boolean;
+  canManageReminders: boolean;
   isProductionManager: boolean;
   isCustomer: boolean;
 }

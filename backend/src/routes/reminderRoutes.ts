@@ -12,6 +12,7 @@ import {
 import {
   authenticateToken,
   requireAdmin,
+  requireAdminOrSupport,
   requireCustomer,
 } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
@@ -35,7 +36,7 @@ router.get('/', getDeliveryReminders);
 router.get('/order/:order_id/stats', requireCustomer, getOrderReminderStats);
 
 // 管理员回复催货
-router.patch('/:id/respond', requireAdmin, validateBody(respondReminderSchema), respondToReminder);
+router.patch('/:id/respond', requireAdminOrSupport, validateBody(respondReminderSchema), respondToReminder);
 
 // 编辑催货消息（仅创建者）
 router.patch('/:id/message', updateReminderMessage);
@@ -44,7 +45,7 @@ router.patch('/:id/message', updateReminderMessage);
 router.patch('/:id/admin-response', updateAdminResponse);
 
 // 管理员派送催货任务给生产跟单
-router.post('/:id/assign', requireAdmin, assignReminderToProductionManager);
+router.post('/:id/assign', requireAdminOrSupport, assignReminderToProductionManager);
 
 // 删除催货记录（管理员和客户都可以删除，但客户只能删除自己的）
 router.delete('/:id', deleteReminder);

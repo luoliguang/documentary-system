@@ -19,12 +19,15 @@ export interface DataAccessFilter {
 /**
  * 检查用户是否可以访问订单
  */
+const ADMIN_LIKE_ROLES = new Set(['admin', 'customer_service']);
+const isAdminLikeRole = (role: string) => ADMIN_LIKE_ROLES.has(role);
+
 export async function canAccessOrder(
   userId: number,
   role: string,
   orderId: number
 ): Promise<boolean> {
-  if (role === 'admin') {
+  if (isAdminLikeRole(role)) {
     return true;
   }
 
@@ -81,7 +84,7 @@ export async function buildOrderDataAccessFilter(
   const params: any[] = [];
   let paramIndex = 1;
 
-  if (role === 'admin') {
+  if (isAdminLikeRole(role)) {
     // 管理员可以查看所有订单，不需要添加WHERE条件
     return { whereConditions, params, paramIndex };
   }
@@ -146,7 +149,7 @@ export async function canUpdateOrder(
   role: string,
   orderId: number
 ): Promise<boolean> {
-  if (role === 'admin') {
+  if (isAdminLikeRole(role)) {
     return true;
   }
 
@@ -174,7 +177,7 @@ export async function canUpdateOrderFieldByRole(
   role: string,
   field: string
 ): Promise<boolean> {
-  if (role === 'admin') {
+  if (isAdminLikeRole(role)) {
     return true;
   }
 
@@ -202,7 +205,7 @@ export async function canUpdateOrderFieldByRole(
  * 检查用户是否可以删除订单
  */
 export async function canDeleteOrder(role: string): Promise<boolean> {
-  if (role === 'admin') {
+  if (isAdminLikeRole(role)) {
     return true;
   }
   return await checkPermission(role, 'orders', 'can_delete');
@@ -231,7 +234,7 @@ export async function canAccessFollowUp(
   role: string,
   followUpId: number
 ): Promise<boolean> {
-  if (role === 'admin') {
+  if (isAdminLikeRole(role)) {
     return true;
   }
 

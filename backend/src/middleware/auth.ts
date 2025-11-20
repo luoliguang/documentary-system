@@ -50,6 +50,11 @@ export const authenticateToken = async (
 };
 
 // 管理员权限中间件
+const isSupportRole = (role?: string) => role === 'customer_service';
+const isAdminRole = (role?: string) => role === 'admin';
+const isAdminOrSupport = (role?: string) =>
+  isAdminRole(role) || isSupportRole(role);
+
 export const requireAdmin = (
   req: AuthRequest,
   res: Response,
@@ -59,8 +64,24 @@ export const requireAdmin = (
     return res.status(401).json({ error: '未认证' });
   }
 
-  if (req.user.role !== 'admin') {
+  if (!isAdminRole(req.user.role)) {
     return res.status(403).json({ error: '需要管理员权限' });
+  }
+
+  next();
+};
+
+export const requireAdminOrSupport = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return res.status(401).json({ error: '未认证' });
+  }
+
+  if (!isAdminOrSupport(req.user.role)) {
+    return res.status(403).json({ error: '需要管理员或客服权限' });
   }
 
   next();

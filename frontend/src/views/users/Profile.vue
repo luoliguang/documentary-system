@@ -128,6 +128,16 @@ const passwordRules = {
   new_password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+    {
+      validator: (_rule: any, value: any, callback: any) => {
+        if (value === passwordForm.old_password) {
+          callback(new Error('新密码不能与旧密码相同'));
+        } else {
+          callback();
+        }
+      },
+      trigger: 'blur',
+    },
   ],
   confirm_password: [
     { required: true, message: '请确认密码', trigger: 'blur' },
@@ -193,7 +203,11 @@ const submitPassword = async () => {
       passwordForm.new_password = '';
       passwordForm.confirm_password = '';
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.error || '修改密码失败');
+      const detailsMessage =
+        error.response?.data?.details?.[0]?.message ||
+        error.response?.data?.error ||
+        '修改密码失败';
+      ElMessage.error(detailsMessage);
     }
   });
 };

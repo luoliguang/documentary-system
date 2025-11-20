@@ -64,6 +64,8 @@
                   ? 'danger'
                   : row.role === 'production_manager'
                   ? 'warning'
+                  : row.role === 'customer_service'
+                  ? 'success'
                   : 'info'
               "
             >
@@ -72,6 +74,8 @@
                   ? '管理员'
                   : row.role === 'production_manager'
                   ? '生产跟单'
+                  : row.role === 'customer_service'
+                  ? '客服'
                   : '客户'
               }}
             </el-tag>
@@ -482,6 +486,7 @@ const submitForm = async () => {
         const updateData: any = {
           account: form.account,
           username: form.username,
+          role: form.role,
           company_name: form.company_name,
           contact_name: form.contact_name,
           email: form.email,
@@ -489,9 +494,19 @@ const submitForm = async () => {
           admin_notes: form.admin_notes,
           is_active: form.is_active,
         };
-        if (form.role === 'production_manager') {
-          updateData.assigned_order_types = form.assigned_order_types;
+
+        if (form.role === 'customer') {
+          updateData.customer_code = form.customer_code;
+        } else {
+          updateData.customer_code = null;
         }
+
+        if (form.role === 'production_manager') {
+          updateData.assigned_order_types = form.assigned_order_types || [];
+        } else {
+          updateData.assigned_order_types = [];
+        }
+
         await usersApi.updateUser(currentUser.value.id, updateData);
         ElMessage.success('用户信息更新成功');
       } else {

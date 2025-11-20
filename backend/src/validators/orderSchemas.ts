@@ -39,8 +39,22 @@ const shippingTrackingNumbersArraySchema = z.array(
     label: z.string().optional(),
   })
 );
-const shippingTrackingNumbersCreateSchema = shippingTrackingNumbersArraySchema.optional().default([]);
-const shippingTrackingNumbersUpdateSchema = shippingTrackingNumbersArraySchema.optional();
+const shippingTrackingNumbersCreateSchema = shippingTrackingNumbersArraySchema
+  .optional()
+  .default([]);
+const shippingTrackingNumbersUpdateSchema =
+  shippingTrackingNumbersArraySchema.optional();
+
+// 动态订单状态/类型值验证
+const orderStatusValueSchema = z
+  .string()
+  .min(1, '订单状态不能为空')
+  .max(50, '订单状态不能超过50个字符');
+
+const orderTypeValueSchema = z
+  .string()
+  .min(1, '订单类型不能为空')
+  .max(50, '订单类型不能超过50个字符');
 
 /**
  * 创建订单验证 Schema
@@ -50,36 +64,31 @@ export const createOrderSchema = z.object({
   customer_id: z.number().int().positive('客户ID必须是正整数'),
   customer_code: z.string().max(50, '客户编号不能超过50个字符').optional(),
   customer_order_number: customerOrderNumberSchema,
-  status: z.enum([
-    ORDER_STATUS.PENDING,
-    ORDER_STATUS.ASSIGNED,
-    ORDER_STATUS.IN_PRODUCTION,
-    ORDER_STATUS.COMPLETED,
-    ORDER_STATUS.SHIPPED,
-    ORDER_STATUS.CANCELLED,
-  ] as [string, ...string[]]).optional().default(ORDER_STATUS.PENDING),
-  order_type: z.enum([
-    ORDER_TYPE.REQUIRED,
-    ORDER_TYPE.SCATTERED,
-    ORDER_TYPE.PHOTO,
-  ] as [string, ...string[]]).optional().default(ORDER_TYPE.REQUIRED),
-  notes: z.string().max(5000, '备注不能超过5000个字符').optional().nullable(),
-  internal_notes: z.string().max(5000, '内部备注不能超过5000个字符').optional().nullable(),
+  status: orderStatusValueSchema.optional().default(ORDER_STATUS.PENDING),
+  order_type: orderTypeValueSchema.optional().default(ORDER_TYPE.REQUIRED),
+  notes: z
+    .string()
+    .max(5000, '备注不能超过5000个字符')
+    .optional()
+    .nullable(),
+  internal_notes: z
+    .string()
+    .max(5000, '内部备注不能超过5000个字符')
+    .optional()
+    .nullable(),
   estimated_ship_date: timestampSchema,
-  order_date: z.union([
-    z.string().datetime(),
-    dateTimeStringSchema,
-    z.date(),
-  ]).refine(
-    (date) => {
-      if (!date) return false;
-      const orderDate = new Date(date);
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
-      return orderDate <= today;
-    },
-    { message: '下单时间不能晚于当前日期' }
-  ),
+  order_date: z
+    .union([z.string().datetime(), dateTimeStringSchema, z.date()])
+    .refine(
+      (date) => {
+        if (!date) return false;
+        const orderDate = new Date(date);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        return orderDate <= today;
+      },
+      { message: '下单时间不能晚于当前日期' }
+    ),
   images: imagesCreateSchema,
   shipping_tracking_numbers: shippingTrackingNumbersCreateSchema,
 });
@@ -87,49 +96,48 @@ export const createOrderSchema = z.object({
 /**
  * 更新订单验证 Schema
  */
-export const updateOrderSchema = z.object({
-  status: z.enum([
-    ORDER_STATUS.PENDING,
-    ORDER_STATUS.ASSIGNED,
-    ORDER_STATUS.IN_PRODUCTION,
-    ORDER_STATUS.COMPLETED,
-    ORDER_STATUS.SHIPPED,
-    ORDER_STATUS.CANCELLED,
-  ] as [string, ...string[]]).optional(),
-  is_completed: z.boolean().optional(),
-  can_ship: z.boolean().optional(),
-  estimated_ship_date: timestampSchema,
-  actual_ship_date: dateSchema,
-  order_date: z.union([
-    z.string().datetime(),
-    dateTimeStringSchema,
-    z.date(),
-  ]).refine(
-    (date) => {
-      if (!date) return true; // 可选字段，如果为空则通过
-      const orderDate = new Date(date);
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
-      return orderDate <= today;
-    },
-    { message: '下单时间不能晚于当前日期' }
-  ).optional().nullable(),
-  notes: z.string().max(5000, '备注不能超过5000个字符').optional().nullable(),
-  internal_notes: z.string().max(5000, '内部备注不能超过5000个字符').optional().nullable(),
-  order_number: orderNumberSchema.optional(),
-  customer_order_number: customerOrderNumberSchema,
-  customer_id: z.number().int().positive('客户ID必须是正整数').optional(),
-  order_type: z.enum([
-    ORDER_TYPE.REQUIRED,
-    ORDER_TYPE.SCATTERED,
-    ORDER_TYPE.PHOTO,
-  ] as [string, ...string[]]).optional(),
-  images: imagesUpdateSchema,
-  shipping_tracking_numbers: shippingTrackingNumbersUpdateSchema,
-}).refine(
-  (data) => Object.keys(data).length > 0,
-  { message: '至少需要提供一个要更新的字段' }
-);
+export const updateOrderSchema = z
+  .object({
+    status: orderStatusValueSchema.optional(),
+    is_completed: z.boolean().optional(),
+    can_ship: z.boolean().optional(),
+    estimated_ship_date: timestampSchema,
+    actual_ship_date: dateSchema,
+    order_date: z
+      .union([z.string().datetime(), dateTimeStringSchema, z.date()])
+      .refine(
+        (date) => {
+          if (!date) return true; // 可选字段，如果为空则通过
+          const orderDate = new Date(date);
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          return orderDate <= today;
+        },
+        { message: '下单时间不能晚于当前日期' }
+      )
+      .optional()
+      .nullable(),
+    notes: z
+      .string()
+      .max(5000, '备注不能超过5000个字符')
+      .optional()
+      .nullable(),
+    internal_notes: z
+      .string()
+      .max(5000, '内部备注不能超过5000个字符')
+      .optional()
+      .nullable(),
+    order_number: orderNumberSchema.optional(),
+    customer_order_number: customerOrderNumberSchema,
+    customer_id: z.number().int().positive('客户ID必须是正整数').optional(),
+    order_type: orderTypeValueSchema.optional(),
+    images: imagesUpdateSchema,
+    shipping_tracking_numbers: shippingTrackingNumbersUpdateSchema,
+  })
+  .refine(
+    (data) => Object.keys(data).length > 0,
+    { message: '至少需要提供一个要更新的字段' }
+  );
 
 /**
  * 更新客户订单编号验证 Schema
@@ -176,26 +184,28 @@ export const getOrdersQuerySchema = z.object({
   customer_id: z.string().regex(/^\d+$/, '客户ID必须是数字').optional(),
   customer_code: z.string().max(50, '客户编号不能超过50个字符').optional(),
   order_number: z.string().max(100, '订单编号不能超过100个字符').optional(),
-  customer_order_number: z.string().max(100, '客户订单编号不能超过100个字符').optional(),
-  status: z.enum([
-    ORDER_STATUS.PENDING,
-    ORDER_STATUS.ASSIGNED,
-    ORDER_STATUS.IN_PRODUCTION,
-    ORDER_STATUS.COMPLETED,
-    ORDER_STATUS.SHIPPED,
-    ORDER_STATUS.CANCELLED,
-  ] as [string, ...string[]]).optional(),
-  order_type: z.enum([
-    ORDER_TYPE.REQUIRED,
-    ORDER_TYPE.SCATTERED,
-    ORDER_TYPE.PHOTO,
-  ] as [string, ...string[]]).optional(),
-  is_completed: z.string().regex(/^(true|false)$/, 'is_completed 必须是 true 或 false').optional(),
-  can_ship: z.string().regex(/^(true|false)$/, 'can_ship 必须是 true 或 false').optional(),
+  customer_order_number: z
+    .string()
+    .max(100, '客户订单编号不能超过100个字符')
+    .optional(),
+  status: orderStatusValueSchema.optional(),
+  order_type: orderTypeValueSchema.optional(),
+  is_completed: z
+    .string()
+    .regex(/^(true|false)$/, 'is_completed 必须是 true 或 false')
+    .optional(),
+  can_ship: z
+    .string()
+    .regex(/^(true|false)$/, 'can_ship 必须是 true 或 false')
+    .optional(),
   company_name: z.string().max(200, '公司名称不能超过200个字符').optional(),
   estimated_ship_start: timestampSchema,
   estimated_ship_end: timestampSchema,
   page: z.string().regex(/^\d+$/, '页码必须是数字').optional().default('1'),
-  pageSize: z.string().regex(/^\d+$/, '每页数量必须是数字').optional().default('20'),
+  pageSize: z
+    .string()
+    .regex(/^\d+$/, '每页数量必须是数字')
+    .optional()
+    .default('20'),
 });
 

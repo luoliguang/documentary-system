@@ -4,7 +4,13 @@ export interface User {
   account?: string; // 登录账号，仅允许字母、数字、下划线
   username: string; // 用户名/显示名称，可以包含中文
   customer_code?: string;
-  role: 'customer' | 'admin' | 'production_manager';
+  role:
+    | 'customer'
+    | 'admin'
+    | 'production_manager'
+    | 'customer_service'
+    | 'follow_leader'
+    | 'sales_leader';
   company_name?: string;
   contact_name?: string;
   email?: string;

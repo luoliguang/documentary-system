@@ -12,13 +12,16 @@ import { ORDER_ASSIGNMENT_COLUMNS } from '../../services/orderAssignmentService.
 /**
  * 获取订单列表（管理员查看所有，客户只能查看自己的）
  */
+const isAdminOrSupportRole = (role: string) =>
+  role === 'admin' || role === 'customer_service';
+
 export const getOrders = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
     let query: string;
     let params: any[];
 
-    if (user.role === 'admin') {
+    if (isAdminOrSupportRole(user.role)) {
       const {
         customer_id,
         customer_code,

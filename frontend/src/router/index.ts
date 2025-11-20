@@ -29,7 +29,7 @@ const router = createRouter({
           path: 'orders/create',
           name: 'OrderCreate',
           component: () => import('../views/orders/OrderCreate.vue'),
-          meta: { requiresAdmin: true },
+          meta: { requiresAdminOrSupport: true },
         },
         {
           path: 'reminders',
@@ -51,7 +51,7 @@ const router = createRouter({
           path: 'users',
           name: 'UserList',
           component: () => import('../views/users/UserList.vue'),
-          meta: { requiresAdmin: true },
+          meta: { requiresAdminOrSupport: true },
         },
         {
           path: 'configs',
@@ -78,7 +78,11 @@ router.beforeEach((to, from, next) => {
     return;
   }
 
-  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+  if (to.meta.requiresAdmin && !authStore.canManageSystem) {
+    next('/');
+    return;
+  }
+  if (to.meta.requiresAdminOrSupport && !authStore.canManageOrders) {
     next('/');
     return;
   }

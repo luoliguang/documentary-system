@@ -10,11 +10,16 @@
     "build": "cd frontend && npm run build",
     "start": "cd backend && npm start"
   },
-  "keywords": ["跟单", "订单管理", "服装行业"],
+  "keywords": [
+    "跟单",
+    "订单管理",
+    "服装行业"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/mocha": "^10.0.10",
     "concurrently": "^8.2.2"
   }
 }
-

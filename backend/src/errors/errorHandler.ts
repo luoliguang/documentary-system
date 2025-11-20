@@ -3,6 +3,11 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { AppError, ErrorCode } from './AppError.js';
+import { JwtPayload } from '../types/index.js';
+
+type RequestWithUser = Request & {
+  user?: JwtPayload;
+};
 
 /**
  * 错误响应格式接口
@@ -46,10 +51,7 @@ export function isForeignKeyConstraintError(error: any): boolean {
 /**
  * 格式化错误响应
  */
-export function formatErrorResponse(
-  error: AppError | Error,
-  req?: Request
-): ErrorResponse {
+export function formatErrorResponse(error: AppError | Error, req?: RequestWithUser): ErrorResponse {
   const response: ErrorResponse = {
     error: error.message || '服务器内部错误',
     timestamp: new Date().toISOString(),
@@ -79,9 +81,10 @@ export function formatErrorResponse(
 /**
  * 记录错误日志
  */
-export function logError(error: Error | AppError, req?: Request): void {
+export function logError(error: Error | AppError, req?: RequestWithUser): void {
   const isAppErr = isAppError(error);
-  const logLevel = isAppErr && isAppErr.isOperational ? 'warn' : 'error';
+  const isOperational = isAppErr ? error.isOperational : false;
+  const logLevel = isOperational ? 'warn' : 'error';
 
   const logData: any = {
     message: error.message,
@@ -100,8 +103,8 @@ export function logError(error: Error | AppError, req?: Request): void {
     logData.ip = req.ip;
     logData.userAgent = req.get('user-agent');
     if (req.user) {
-      logData.userId = (req.user as any).userId;
-      logData.role = (req.user as any).role;
+      logData.userId = req.user.userId;
+      logData.role = req.user.role;
     }
   }
 
@@ -118,7 +121,7 @@ export function logError(error: Error | AppError, req?: Request): void {
  */
 export function errorHandler(
   error: Error | AppError,
-  req: Request,
+  req: RequestWithUser,
   res: Response,
   next: NextFunction
 ): void {
@@ -133,7 +136,8 @@ export function errorHandler(
   // 处理 AppError
   if (isAppError(error)) {
     const response = formatErrorResponse(error, req);
-    return res.status(error.statusCode).json(response);
+    res.status(error.statusCode).json(response);
+    return;
   }
 
   // 处理数据库错误
@@ -146,7 +150,8 @@ export function errorHandler(
       { constraint: (error as any).constraint }
     );
     const response = formatErrorResponse(appError, req);
-    return res.status(400).json(response);
+    res.status(400).json(response);
+    return;
   }
 
   if (isForeignKeyConstraintError(error)) {
@@ -158,7 +163,8 @@ export function errorHandler(
       { constraint: (error as any).constraint }
     );
     const response = formatErrorResponse(appError, req);
-    return res.status(400).json(response);
+    res.status(400).json(response);
+    return;
   }
 
   // 处理其他未知错误
@@ -171,9 +177,9 @@ export function errorHandler(
  * 用于包装异步路由处理器，自动捕获 Promise 拒绝
  */
 export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
+  fn: (req: RequestWithUser, res: Response, next: NextFunction) => Promise<any>
 ) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: RequestWithUser, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
@@ -182,7 +188,11 @@ export function asyncHandler(
  * 404 错误处理中间件
  * 必须放在所有路由之后，错误处理中间件之前
  */
-export function notFoundHandler(req: Request, res: Response, next: NextFunction): void {
+export function notFoundHandler(
+  req: RequestWithUser,
+  res: Response,
+  next: NextFunction
+): void {
   const error = new AppError(
     `路径 ${req.originalUrl} 不存在`,
     404,

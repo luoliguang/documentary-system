@@ -6,7 +6,7 @@
           <h3>订单列表</h3>
           <div class="header-actions">
             <el-button
-              v-if="authStore.isAdmin"
+              v-if="authStore.canManageOrders"
               type="primary"
               size="default"
               class="create-btn"
@@ -69,7 +69,7 @@
               <el-option label="未完成" :value="false" />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="authStore.isAdmin" label="客户公司">
+          <el-form-item v-if="authStore.canManageOrders" label="客户公司">
             <el-select
               v-model="filters.company_name"
               placeholder="请选择客户公司"
@@ -154,7 +154,7 @@
         </el-table-column>
         <el-table-column prop="customer_order_number" label="客户订单编号" width="180" />
         <el-table-column
-          v-if="authStore.isAdmin"
+          v-if="authStore.canManageOrders"
           prop="company_name"
           label="客户公司"
           width="180"
@@ -162,7 +162,7 @@
         <el-table-column prop="status" label="状态" width="140">
           <template #default="{ row }">
             <el-select
-              v-if="authStore.isAdmin"
+              v-if="authStore.canManageOrders"
               v-model="row.status"
               size="small"
               style="width: 100%"
@@ -181,7 +181,7 @@
           </template>
         </el-table-column>
         <el-table-column
-          v-if="authStore.isAdmin || authStore.isProductionManager"
+          v-if="authStore.canManageOrders || authStore.isProductionManager"
           label="生产跟单"
           min-width="180"
         >
@@ -203,7 +203,7 @@
         <el-table-column prop="is_completed" label="是否完成" width="100">
           <template #default="{ row }">
             <el-switch
-              v-if="authStore.isAdmin || authStore.isProductionManager"
+              v-if="authStore.canManageOrders || authStore.isProductionManager"
               v-model="row.is_completed"
               size="small"
               @change="handleIsCompletedChange(row)"
@@ -216,7 +216,7 @@
         <el-table-column prop="can_ship" label="可出货" width="100">
           <template #default="{ row }">
             <el-switch
-              v-if="authStore.isAdmin || authStore.isProductionManager"
+              v-if="authStore.canManageOrders || authStore.isProductionManager"
               v-model="row.can_ship"
               size="small"
               @change="handleCanShipChange(row)"
@@ -235,7 +235,7 @@
         <el-table-column prop="estimated_ship_date" label="预计出货日期" width="220">
           <template #default="{ row }">
             <el-date-picker
-              v-if="authStore.isAdmin || authStore.isProductionManager"
+              v-if="authStore.canManageOrders || authStore.isProductionManager"
               v-model="row.estimated_ship_date"
               type="datetime"
               placeholder="选择日期时间"
@@ -264,7 +264,7 @@
               查看
             </el-button>
             <el-button
-              v-if="authStore.isAdmin"
+              v-if="authStore.canManageOrders"
               type="success"
               size="small"
               link
@@ -273,7 +273,7 @@
               编辑
             </el-button>
             <el-button
-              v-if="authStore.isAdmin && !row.is_completed"
+              v-if="authStore.canManageOrders && !row.is_completed"
               type="success"
               size="small"
               link
@@ -282,7 +282,7 @@
               完成
             </el-button>
             <el-button
-              v-if="authStore.isAdmin"
+              v-if="authStore.canManageOrders"
               :type="row.assigned_to_ids?.length ? 'success' : 'info'"
               size="small"
               link
@@ -310,7 +310,7 @@
               </span>
             </el-button>
             <el-button
-              v-if="authStore.isAdmin"
+              v-if="authStore.canManageOrders"
               type="danger"
               size="small"
               link
@@ -491,7 +491,8 @@ import type { Order } from '../../types';
 const router = useRouter();
 const authStore = useAuthStore();
 const authFlags = computed(() => ({
-  isAdmin: authStore.isAdmin,
+  canManageOrders: authStore.canManageOrders,
+  canManageReminders: authStore.canManageReminders,
   isProductionManager: authStore.isProductionManager,
   isCustomer: authStore.isCustomer,
 }));
@@ -516,7 +517,7 @@ const checkMobile = () => {
 
 // 加载客户公司列表
 const loadCompanyNames = async () => {
-  if (!authStore.isAdmin) return; // 只有管理员需要加载客户公司列表
+  if (!authStore.canManageOrders) return; // 只有具备订单管理权限的角色需要加载客户公司列表
   
   try {
     const response = await ordersApi.getCustomers();
@@ -788,7 +789,7 @@ const loadOrders = async () => {
     }
     
     // 加载订单相关的未读通知
-    if (authStore.isAdmin || authStore.isProductionManager) {
+    if (authStore.canManageOrders || authStore.isProductionManager) {
       await loadOrderNotifications();
     }
   } catch (error) {
@@ -894,7 +895,7 @@ const handleReminder = async (orderId: number) => {
 watch(reminderDialogVisible, async (newVal) => {
   if (!newVal) {
     // 催货对话框关闭后，刷新通知和统计
-    if (authStore.isAdmin || authStore.isProductionManager) {
+    if (authStore.canManageOrders || authStore.isProductionManager) {
       loadOrderNotifications();
       notificationsStore.fetchUnreadCount();
     }
@@ -1157,7 +1158,7 @@ const submitAssign = async () => {
     await loadOrders();
     
     // 刷新通知
-    if (authStore.isAdmin || authStore.isProductionManager) {
+    if (authStore.canManageOrders || authStore.isProductionManager) {
       notificationsStore.fetchUnreadCount();
     }
   } catch (error: any) {

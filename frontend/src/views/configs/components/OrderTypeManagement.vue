@@ -49,6 +49,7 @@ import { ref, onMounted, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useConfigStore } from '../../../stores/config';
+import { invalidateOrderTypeOptionsCache, setOrderTypeOptionsCache } from '../../../composables/useConfigOptions';
 
 interface OrderType {
   value: string;
@@ -113,6 +114,8 @@ const handleDelete = async (row: OrderType) => {
 
     const updatedTypes = orderTypes.value.filter((t) => t.value !== row.value);
     await configStore.saveConfig(CONFIG_KEY, updatedTypes, { type: CONFIG_TYPE });
+    invalidateOrderTypeOptionsCache();
+    setOrderTypeOptionsCache(updatedTypes);
     ElMessage.success('删除成功');
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -142,6 +145,8 @@ const handleSubmit = async () => {
     }
 
     await configStore.saveConfig(CONFIG_KEY, updatedTypes, { type: CONFIG_TYPE });
+    invalidateOrderTypeOptionsCache();
+    setOrderTypeOptionsCache(updatedTypes);
     ElMessage.success(isEdit.value ? '更新成功' : '创建成功');
     dialogVisible.value = false;
   } catch (error) {

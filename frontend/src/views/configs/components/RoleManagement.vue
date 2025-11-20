@@ -5,6 +5,14 @@
         <el-icon><Plus /></el-icon>
         创建角色
       </el-button>
+      <el-button
+        v-if="!hasCustomerServiceRole"
+        type="success"
+        @click="handleCreateCustomerService"
+      >
+        <el-icon><Plus /></el-icon>
+        一键创建“客服”角色
+      </el-button>
     </div>
 
     <el-table v-loading="tableLoading" :data="roles" stripe style="width: 100%">
@@ -101,11 +109,15 @@ const ROLE_PERMISSIONS_KEY = 'role_permissions';
 const ROLE_PERMISSIONS_TYPE = 'permissions';
 
 const configStore = useConfigStore();
+const CUSTOMER_SERVICE_ROLE_VALUE = 'customer_service';
 
 const tableLoading = ref(false);
 const roles = computed<Role[]>(() => {
   return configStore.getConfigValue<Role[]>(ROLES_KEY, ROLES_TYPE) || [];
 });
+const hasCustomerServiceRole = computed(() =>
+  roles.value.some((role) => role.value === CUSTOMER_SERVICE_ROLE_VALUE)
+);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const dialogTitle = ref('创建角色');
@@ -121,6 +133,104 @@ const form = ref<Role>({
   value: '',
   label: '',
 });
+
+const createEmptyPermissionTemplate = () => ({
+  orders: {
+    can_view_all: false,
+    can_view_assigned: false,
+    can_view_own: false,
+    can_create: false,
+    can_update: false,
+    can_delete: false,
+    can_assign: false,
+    can_update_completed: false,
+    can_update_can_ship: false,
+    can_update_estimated_ship_date: false,
+    can_update_notes: false,
+    can_update_status: false,
+    can_update_order_type: false,
+    can_view_internal_notes: false,
+    allowed_order_types: [],
+  },
+  reminders: {
+    can_view_all: false,
+    can_view_assigned: false,
+    can_create: false,
+    can_update: false,
+    can_delete: false,
+  },
+  users: {
+    can_view: false,
+    can_create: false,
+    can_update: false,
+    can_delete: false,
+  },
+  configs: {
+    can_view: false,
+    can_update: false,
+  },
+});
+
+const buildDefaultPermissions = (roleValue: string) => {
+  const template = createEmptyPermissionTemplate();
+  if (roleValue === CUSTOMER_SERVICE_ROLE_VALUE) {
+    template.orders = {
+      ...template.orders,
+      can_view_all: true,
+      can_create: true,
+      can_update: true,
+      can_delete: true,
+      can_assign: true,
+      can_update_completed: true,
+      can_update_can_ship: true,
+      can_update_estimated_ship_date: true,
+      can_update_notes: true,
+      can_update_status: true,
+      can_update_order_type: true,
+      can_view_internal_notes: true,
+      allowed_order_types: [],
+    };
+    template.reminders = {
+      can_view_all: true,
+      can_view_assigned: true,
+      can_create: true,
+      can_update: true,
+      can_delete: true,
+    };
+    template.users = {
+      can_view: true,
+      can_create: true,
+      can_update: true,
+      can_delete: false,
+    };
+    template.configs = {
+      can_view: false,
+      can_update: false,
+    };
+  }
+  return template;
+};
+
+const clone = (value: any) => JSON.parse(JSON.stringify(value));
+
+const upsertRolePermissionEntry = async (
+  roleValue: string,
+  permissions?: Record<string, any>
+) => {
+  const existing =
+    (await configStore.fetchConfig(ROLE_PERMISSIONS_KEY, {
+      type: ROLE_PERMISSIONS_TYPE,
+      force: true,
+    })) || {};
+  const nextPermissions = clone(existing);
+  const payload = permissions ? clone(permissions) : buildDefaultPermissions(roleValue);
+  if (!nextPermissions[roleValue] || permissions) {
+    nextPermissions[roleValue] = payload;
+    await configStore.saveConfig(ROLE_PERMISSIONS_KEY, nextPermissions, {
+      type: ROLE_PERMISSIONS_TYPE,
+    });
+  }
+};
 
 const loadRoles = async () => {
   tableLoading.value = true;
@@ -139,6 +249,22 @@ const handleCreate = () => {
   form.value = { value: '', label: '' };
   activeTab.value = 'basic';
   rolePermissions.value = {};
+  dialogVisible.value = true;
+};
+
+const handleCreateCustomerService = () => {
+  const exists = roles.value.some(
+    (role) => role.value === CUSTOMER_SERVICE_ROLE_VALUE
+  );
+  if (exists) {
+    ElMessage.info('“客服”角色已存在');
+    return;
+  }
+  form.value = { value: CUSTOMER_SERVICE_ROLE_VALUE, label: '客服' };
+  isEdit.value = false;
+  activeTab.value = 'basic';
+  rolePermissions.value = buildDefaultPermissions(CUSTOMER_SERVICE_ROLE_VALUE);
+  dialogTitle.value = '创建客服角色';
   dialogVisible.value = true;
 };
 
@@ -185,18 +311,40 @@ const loadRolePermissions = async (roleValue: string) => {
       (await configStore.fetchConfig(ROLE_PERMISSIONS_KEY, {
         type: ROLE_PERMISSIONS_TYPE,
       })) || {};
-    allRolePermissions.value = JSON.parse(JSON.stringify(data));
+    
+    // 确保 data 是对象类型
+    const permissionsData = typeof data === 'object' && data !== null ? data : {};
+    allRolePermissions.value = clone(permissionsData);
 
-    const currentRolePermissions = allRolePermissions.value[roleValue] || {};
-    rolePermissions.value = JSON.parse(JSON.stringify(currentRolePermissions));
+    const currentRolePermissions = allRolePermissions.value[roleValue];
+    if (currentRolePermissions && typeof currentRolePermissions === 'object') {
+      rolePermissions.value = clone(currentRolePermissions);
+    } else {
+      rolePermissions.value = buildDefaultPermissions(roleValue);
+    }
 
     // 确保 orders 资源有 allowed_order_types 字段
     if (rolePermissions.value.orders && !rolePermissions.value.orders.allowed_order_types) {
       rolePermissions.value.orders.allowed_order_types = [];
     }
+    
+    // 确保所有资源都有正确的结构
+    if (!rolePermissions.value.orders) {
+      rolePermissions.value.orders = createEmptyPermissionTemplate().orders;
+    }
+    if (!rolePermissions.value.reminders) {
+      rolePermissions.value.reminders = createEmptyPermissionTemplate().reminders;
+    }
+    if (!rolePermissions.value.users) {
+      rolePermissions.value.users = createEmptyPermissionTemplate().users;
+    }
+    if (!rolePermissions.value.configs) {
+      rolePermissions.value.configs = createEmptyPermissionTemplate().configs;
+    }
   } catch (error) {
+    console.error('加载权限配置失败:', error);
     ElMessage.error('加载权限配置失败');
-    rolePermissions.value = {};
+    rolePermissions.value = buildDefaultPermissions(roleValue);
   } finally {
     permissionsLoading.value = false;
   }
@@ -290,22 +438,14 @@ const handleSubmit = async () => {
 
     await configStore.saveConfig(ROLES_KEY, updatedRoles, { type: ROLES_TYPE });
 
-    // 2. 如果是编辑模式且修改了权限，更新权限配置
+    // 2. 同步权限配置
     if (isEdit.value && Object.keys(rolePermissions.value).length > 0) {
-      const response =
-        (await configStore.fetchConfig(ROLE_PERMISSIONS_KEY, {
-          type: ROLE_PERMISSIONS_TYPE,
-          force: true,
-        })) || {};
-      const currentPermissions = JSON.parse(JSON.stringify(response));
-      
-      // 更新当前角色的权限
-      currentPermissions[form.value.value] = JSON.parse(JSON.stringify(rolePermissions.value));
-      
-      // 保存权限配置
-      await configStore.saveConfig(ROLE_PERMISSIONS_KEY, currentPermissions, {
-        type: ROLE_PERMISSIONS_TYPE,
-      });
+      await upsertRolePermissionEntry(
+        form.value.value,
+        rolePermissions.value
+      );
+    } else if (!isEdit.value) {
+      await upsertRolePermissionEntry(form.value.value);
     }
 
     ElMessage.success(isEdit.value ? '更新成功' : '创建成功');
@@ -329,6 +469,9 @@ onMounted(() => {
 
 .header-actions {
   margin-bottom: 20px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .permissions-content {
