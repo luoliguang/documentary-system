@@ -79,17 +79,23 @@ export const createDeliveryReminder = async (
       [order_id, user.userId, reminder_type, message || null]
     );
 
-    // 向所有管理员发送催单通知
+    // 向所有管理员和客服发送催单通知
     try {
-      const adminUserIds = await getAllAdminUserIds();
-      if (adminUserIds.length > 0) {
+      // 获取管理员和客服的用户ID
+      const adminAndSupportResult = await pool.query(
+        "SELECT id FROM users WHERE role IN ('admin', 'customer_service') AND is_active = true",
+        []
+      );
+      const adminAndSupportUserIds = adminAndSupportResult.rows.map((row) => row.id);
+      
+      if (adminAndSupportUserIds.length > 0) {
         const reminderTypeText = reminder_type === 'urgent' ? '紧急催单' : '催单';
         const title = `${reminderTypeText}：${orderInfo.order_number || '订单'}`;
         const content = message
           ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。\n催单消息：${message}`
           : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。`;
 
-        await createNotificationsForUsers(adminUserIds, {
+        await createNotificationsForUsers(adminAndSupportUserIds, {
           type: 'reminder',
           title,
           content,
@@ -123,8 +129,11 @@ export const getDeliveryReminders = async (
     let query: string;
     let params: any[];
 
-    if (user.role === 'admin') {
-      // 管理员查看所有催货记录
+    // 管理员和客服可以查看所有催货记录
+    const isAdminOrSupport = user.role === 'admin' || user.role === 'customer_service';
+    
+    if (isAdminOrSupport) {
+      // 管理员和客服查看所有催货记录
       const { 
         order_id, 
         order_number,
@@ -501,8 +510,8 @@ export const assignReminderToProductionManager = async (
     const { id } = req.params;
     const { assigned_to } = req.body;
 
-    // 只有管理员可以操作
-    if (user.role !== 'admin') {
+    // 管理员和客服可以操作
+    if (user.role !== 'admin' && user.role !== 'customer_service') {
       return res.status(403).json({ error: '无权操作' });
     }
 
