@@ -238,7 +238,7 @@ docs/private/
 # 必须提交的架构文档（白名单）
 # ============================================
 # 以下文档应该被提交：
-!ARCHITECTURE.md                    # 项目总纲
+ARCHITECTURE.md                    # 项目总纲
 # !docs/adr/*.md                      # 架构决策记录
 # !docs/diagrams/*.png                # C4 架构图
 # !docs/database/schema.sql            # 数据库结构文档
