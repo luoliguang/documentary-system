@@ -235,10 +235,12 @@ docs/private/
 *.总结*.md
 
 # ============================================
-# 必须提交的架构文档（白名单）
+# 架构文档（根据项目需要选择是否提交）
 # ============================================
-# 以下文档应该被提交：
-ARCHITECTURE.md                    # 项目总纲
+# ARCHITECTURE.md - 项目总纲（不提交，放到 private-docs/ 或本地维护）
+ARCHITECTURE.md
+
+# 以下文档应该被提交（如果需要）：
 # !docs/adr/*.md                      # 架构决策记录
 # !docs/diagrams/*.png                # C4 架构图
 # !docs/database/schema.sql            # 数据库结构文档
