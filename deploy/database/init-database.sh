@@ -95,6 +95,53 @@ else
     echo "   ⚠️  迁移目录不存在: $MIGRATIONS_DIR"
 fi
 
+# 使用 TypeORM 进行一次全量快照迁移（支持 fake 策略）
+TYPEORM_DIR="${TYPEORM_DIR:-$PROJECT_ROOT/backend}"
+TYPEORM_DATA_SOURCE="${TYPEORM_DATA_SOURCE:-src/data-source.ts}"
+TYPEORM_MIGRATIONS_TABLE="${TYPEORM_MIGRATIONS_TABLE:-migrations}"
+TYPEORM_FAKE_ONCE="${TYPEORM_FAKE_ONCE:-true}"
+
+if [ -d "$TYPEORM_DIR" ]; then
+    echo ""
+    echo "============================================"
+    echo "🚀 使用 TypeORM 校验 & 同步数据库结构..."
+    echo "============================================"
+
+    NEED_FAKE="false"
+    if [ "$TYPEORM_FAKE_ONCE" = "true" ]; then
+        TABLE_EXIST=$($PSQL_CMD -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -tAc "SELECT to_regclass('public.${TYPEORM_MIGRATIONS_TABLE}')")
+        TABLE_EXIST=$(echo "$TABLE_EXIST" | tr -d '[:space:]')
+        if [ -z "$TABLE_EXIST" ]; then
+            echo "   ✅ migrations 表不存在，准备执行 fake run"
+            NEED_FAKE="true"
+        else
+            COUNT=$($PSQL_CMD -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -tAc "SELECT COUNT(*) FROM ${TYPEORM_MIGRATIONS_TABLE}")
+            COUNT=$(echo "$COUNT" | tr -d '[:space:]')
+            if [ "$COUNT" = "0" ]; then
+                echo "   ✅ migrations 表为空，准备执行 fake run"
+                NEED_FAKE="true"
+            fi
+        fi
+    fi
+
+    cd "$TYPEORM_DIR"
+
+    if [ "$NEED_FAKE" = "true" ]; then
+        echo "👉 执行: npx typeorm migration:run --fake -d $TYPEORM_DATA_SOURCE"
+        npx typeorm migration:run --fake -d "$TYPEORM_DATA_SOURCE"
+    else
+        echo "   ℹ️  跳过 fake run（设置 TYPEORM_FAKE_ONCE=false 可强制跳过）"
+    fi
+
+    echo "👉 执行: npx typeorm migration:run -d $TYPEORM_DATA_SOURCE"
+    npx typeorm migration:run -d "$TYPEORM_DATA_SOURCE"
+
+    cd "$PROJECT_ROOT"
+else
+    echo ""
+    echo "⚠️  警告: 未找到 backend 目录，跳过 TypeORM 迁移"
+fi
+
 # 清除密码环境变量
 unset PGPASSWORD
 

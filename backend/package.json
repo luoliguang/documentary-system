@@ -8,6 +8,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "migration:generate": "typeorm migration:generate src/migration/FullSnapshot -d src/data-source.ts",
+    "migration:run": "typeorm migration:run -d src/data-source.ts",
+    "migration:run:fake": "typeorm migration:run --fake -d src/data-source.ts",
     "test": "jest",
     "test:critical": "jest --runInBand __tests__/functional",
     "test:all": "jest"
@@ -21,6 +24,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "pg": "^8.11.3",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.20",
     "zod": "^3.22.4"
   },
   "devDependencies": {
