@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class FullSnapshot9991700000000000 implements MigrationInterface {
   name = 'FullSnapshot9991700000000000';
