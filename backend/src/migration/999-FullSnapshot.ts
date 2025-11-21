@@ -178,6 +178,11 @@ export class FullSnapshot9991700000000000 implements MigrationInterface {
       $$ language 'plpgsql';
     `);
 
+    await queryRunner.query(`DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;`);
+    await queryRunner.query(`DROP TRIGGER IF EXISTS update_users_updated_at ON users;`);
+    await queryRunner.query(`DROP TRIGGER IF EXISTS update_order_follow_ups_updated_at ON order_follow_ups;`);
+    await queryRunner.query(`DROP TRIGGER IF EXISTS update_system_configs_updated_at ON system_configs;`);
+
     await queryRunner.query(`
       CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
         FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
