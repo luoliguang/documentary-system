@@ -73,7 +73,10 @@ export class FullSnapshot9991700000000000 implements MigrationInterface {
         assigned_to INTEGER REFERENCES users(id),
         is_resolved BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        resolved_at TIMESTAMP
+        resolved_at TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT false,
+        deleted_at TIMESTAMP,
+        deleted_by INTEGER REFERENCES users(id)
       );
     `);
 

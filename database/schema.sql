@@ -67,7 +67,10 @@ CREATE TABLE IF NOT EXISTS delivery_reminders (
     assigned_to INTEGER REFERENCES users(id), -- 分配给哪个生产跟单
     is_resolved BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP
+    resolved_at TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false, -- 软删除标记
+    deleted_at TIMESTAMP,
+    deleted_by INTEGER REFERENCES users(id)
 );
 
 -- 订单状态历史记录表
