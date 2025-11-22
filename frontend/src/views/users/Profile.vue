@@ -51,6 +51,33 @@
 
       <el-card shadow="never">
         <template #header>
+          <h4>通知设置</h4>
+        </template>
+        <el-form label-width="120px" style="max-width: 600px">
+          <el-form-item label="桌面通知">
+            <el-switch
+              v-model="notificationEnabled"
+              active-text="开启"
+              inactive-text="关闭"
+              @change="handleNotificationToggle"
+            />
+            <div style="margin-top: 8px; color: #909399; font-size: 12px">
+              <p>开启后，当有新订单、催单或通知时，系统会在桌面显示提醒</p>
+              <p v-if="notificationPermission === 'denied'" style="color: #f56c6c">
+                ⚠️ 浏览器已拒绝通知权限，请在浏览器设置中允许通知权限
+              </p>
+              <p v-else-if="notificationPermission === 'default'" style="color: #e6a23c">
+                ℹ️ 首次开启时会请求浏览器通知权限
+              </p>
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <el-divider />
+
+      <el-card shadow="never">
+        <template #header>
           <h4>修改密码</h4>
         </template>
         <el-form
@@ -94,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useAuthStore } from '../../stores/auth';
 import { profileApi } from '../../api/users';
@@ -107,6 +134,17 @@ const form = reactive({
   contact_name: '',
   email: '',
   phone: '',
+});
+
+// 通知开关状态
+const notificationEnabled = ref(authStore.notificationEnabled);
+
+// 浏览器通知权限状态
+const notificationPermission = computed(() => {
+  if (typeof Notification === 'undefined') {
+    return 'unsupported';
+  }
+  return Notification.permission;
 });
 
 const passwordForm = reactive({
@@ -212,8 +250,52 @@ const submitPassword = async () => {
   });
 };
 
+// 处理通知开关切换
+const handleNotificationToggle = async (enabled: boolean) => {
+  try {
+    // 如果开启，先请求浏览器权限
+    if (enabled) {
+      if (typeof Notification === 'undefined') {
+        ElMessage.warning('您的浏览器不支持桌面通知');
+        return;
+      }
+
+      if (Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          ElMessage.warning('需要通知权限才能开启桌面通知');
+          return;
+        }
+      } else if (Notification.permission === 'denied') {
+        ElMessage.error('浏览器已拒绝通知权限，请在浏览器设置中允许');
+        return;
+      }
+    }
+
+    // 保存到后端
+    await profileApi.updateProfile({
+      notification_enabled: enabled,
+    });
+
+    // 更新本地状态
+    authStore.updateNotificationEnabled(enabled);
+    await authStore.fetchCurrentUser();
+
+    ElMessage.success(enabled ? '桌面通知已开启' : '桌面通知已关闭');
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.error || '更新通知设置失败');
+  }
+};
+
+// 监听authStore的notificationEnabled变化
+watch(() => authStore.notificationEnabled, (newVal) => {
+  notificationEnabled.value = newVal;
+});
+
 onMounted(() => {
   loadProfile();
+  // 初始化通知开关状态
+  notificationEnabled.value = authStore.notificationEnabled;
 });
 </script>
 

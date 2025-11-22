@@ -18,6 +18,7 @@ export interface User {
   assigned_order_types?: string[]; // 生产跟单的订单类型权限
   permission_overrides?: Record<string, any>; // 用户级权限覆盖
   admin_notes?: string; // 管理员备注，仅管理员可见
+  notification_enabled?: boolean; // 是否启用桌面通知（默认false）
   created_at: string;
   updated_at: string;
   is_active: boolean;

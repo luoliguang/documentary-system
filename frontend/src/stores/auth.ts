@@ -26,6 +26,15 @@ export const useAuthStore = defineStore('auth', () => {
   );
   const canManageSystem = computed(() => ['admin'].includes(currentRole.value));
 
+  // 通知开关状态（从localStorage和user中获取，优先localStorage）
+  const notificationEnabled = computed(() => {
+    const localValue = localStorage.getItem('notification_enabled');
+    if (localValue !== null) {
+      return localValue === 'true';
+    }
+    return user.value?.notification_enabled ?? false;
+  });
+
   // 登录
   const login = async (account: string, password: string) => {
     try {
@@ -63,6 +72,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
+  // 更新通知开关（同时更新localStorage和user）
+  const updateNotificationEnabled = (enabled: boolean) => {
+    localStorage.setItem('notification_enabled', String(enabled));
+    if (user.value) {
+      user.value.notification_enabled = enabled;
+      localStorage.setItem('user', JSON.stringify(user.value));
+    }
+  };
+
   return {
     token,
     user,
@@ -74,9 +92,11 @@ export const useAuthStore = defineStore('auth', () => {
     canManageOrders,
     canManageReminders,
     canManageSystem,
+    notificationEnabled,
     login,
     logout,
     fetchCurrentUser,
+    updateNotificationEnabled,
   };
 });
 

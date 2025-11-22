@@ -256,11 +256,59 @@ export const useNotificationsStore = defineStore('notifications', () => {
           if (lastFetchParams.value) {
             fetchNotifications(lastFetchParams.value);
           }
+
+          // 桌面通知（检查开关和权限）
+          showDesktopNotification(notification);
         }
       }
     };
     
     connectWebSocket(notificationHandler);
+  };
+
+  /**
+   * 显示桌面通知
+   */
+  const showDesktopNotification = (notification: Notification) => {
+    const authStore = useAuthStore();
+    
+    // 检查通知开关
+    if (!authStore.notificationEnabled) {
+      return;
+    }
+
+    // 检查浏览器支持
+    if (typeof Notification === 'undefined') {
+      return;
+    }
+
+    // 检查权限
+    if (Notification.permission !== 'granted') {
+      return;
+    }
+
+    // 显示通知
+    try {
+      const notificationInstance = new Notification(notification.title, {
+        body: notification.content || '',
+        icon: '/favicon.ico', // 可以替换为你的图标
+        tag: `notification-${notification.id}`, // 避免重复通知
+        requireInteraction: false,
+      });
+
+      // 点击通知时聚焦窗口（如果可能）
+      notificationInstance.onclick = () => {
+        window.focus();
+        notificationInstance.close();
+      };
+
+      // 5秒后自动关闭
+      setTimeout(() => {
+        notificationInstance.close();
+      }, 5000);
+    } catch (error) {
+      console.error('显示桌面通知失败:', error);
+    }
   };
 
   /**

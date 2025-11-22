@@ -76,20 +76,36 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
     let result;
     try {
       result = await pool.query(
-        'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, assigned_order_types, admin_notes, is_active, created_at, updated_at FROM users WHERE id = $1',
+        'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, assigned_order_types, admin_notes, notification_enabled, is_active, created_at, updated_at FROM users WHERE id = $1',
         [userId]
       );
     } catch (error: any) {
       // 如果字段不存在，使用旧的查询（向后兼容）
       if (error.code === '42703') {
-        result = await pool.query(
-          'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, is_active, created_at, updated_at FROM users WHERE id = $1',
-          [userId]
-        );
-        // 为旧数据添加默认值
-        if (result.rows.length > 0) {
-          result.rows[0].assigned_order_types = null;
-          result.rows[0].admin_notes = null;
+        try {
+          result = await pool.query(
+            'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, assigned_order_types, admin_notes, is_active, created_at, updated_at FROM users WHERE id = $1',
+            [userId]
+          );
+          // 为旧数据添加默认值
+          if (result.rows.length > 0) {
+            result.rows[0].notification_enabled = false;
+          }
+        } catch (innerError: any) {
+          if (innerError.code === '42703') {
+            result = await pool.query(
+              'SELECT id, username, customer_code, role, company_name, contact_name, email, phone, is_active, created_at, updated_at FROM users WHERE id = $1',
+              [userId]
+            );
+            // 为旧数据添加默认值
+            if (result.rows.length > 0) {
+              result.rows[0].assigned_order_types = null;
+              result.rows[0].admin_notes = null;
+              result.rows[0].notification_enabled = false;
+            }
+          } else {
+            throw innerError;
+          }
         }
       } else {
         throw error;
@@ -116,7 +132,7 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
 export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
-    const { contact_name, email, phone } = req.body;
+    const { contact_name, email, phone, notification_enabled } = req.body;
 
     const updates: string[] = [];
     const values: any[] = [];
@@ -134,13 +150,17 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       updates.push(`phone = $${paramIndex++}`);
       values.push(phone);
     }
+    if (notification_enabled !== undefined) {
+      updates.push(`notification_enabled = $${paramIndex++}`);
+      values.push(notification_enabled === true || notification_enabled === 'true');
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: '没有要更新的字段' });
     }
 
     values.push(userId);
-    const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING id, username, customer_code, role, company_name, contact_name, email, phone, created_at, updated_at`;
+    const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING id, username, customer_code, role, company_name, contact_name, email, phone, notification_enabled, created_at, updated_at`;
     const result = await pool.query(updateQuery, values);
 
     res.json({

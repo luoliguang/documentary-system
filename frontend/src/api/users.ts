@@ -54,7 +54,7 @@ export const usersApi = {
 // 用户个人中心API
 export const profileApi = {
   // 更新个人信息
-  updateProfile: (data: { contact_name?: string; email?: string; phone?: string }): Promise<{ message: string; user: User }> => {
+  updateProfile: (data: { contact_name?: string; email?: string; phone?: string; notification_enabled?: boolean }): Promise<{ message: string; user: User }> => {
     return api.put('/auth/profile', data);
   },
 
