@@ -126,8 +126,13 @@ export const ordersApi = {
   },
 
   // 获取客户列表（仅管理员）
-  getCustomers: (): Promise<{ customers: any[] }> => {
-    return api.get('/orders/customers/list');
+  getCustomers: (params?: { company_id?: number; company_name?: string; search?: string }): Promise<{ customers: any[] }> => {
+    return api.get('/orders/customers/list', { params });
+  },
+
+  // 获取客户公司列表（仅管理员）
+  getCustomerCompanies: (params?: { search?: string }): Promise<{ companies: any[] }> => {
+    return api.get('/orders/companies/list', { params });
   },
 
   // 获取生产跟单列表（仅管理员）

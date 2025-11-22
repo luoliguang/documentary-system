@@ -60,18 +60,18 @@ export function connectWebSocket(onMessage: (data: any) => void) {
 
   // 构建WebSocket URL
   const wsUrl = buildWebSocketUrl();
-  console.log(`🔌 尝试连接WebSocket: ${wsUrl}`);
+  // console.log(`🔌 尝试连接WebSocket: ${wsUrl}`);
   
   try {
     ws = new WebSocket(wsUrl);
   } catch (error) {
-    console.error('❌ 创建WebSocket连接失败:', error);
+    // console.error('❌ 创建WebSocket连接失败:', error);
     reconnectAttempts++;
     return null;
   }
 
   ws.onopen = () => {
-    console.log('✅ WebSocket连接成功');
+    // console.log('✅ WebSocket连接成功');
     reconnectAttempts = 0; // 重置重连次数
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -95,14 +95,14 @@ export function connectWebSocket(onMessage: (data: any) => void) {
     }
   };
 
-  ws.onerror = (error) => {
-    console.error('❌ WebSocket错误:', error);
+  ws.onerror = () => {
+    // console.error('❌ WebSocket错误:', error);
     // 不在这里重连，让onclose处理
   };
 
   ws.onclose = (event) => {
-    const { code, reason, wasClean } = event;
-    console.log(`❌ WebSocket连接关闭 (code: ${code}, reason: ${reason || '无'}, clean: ${wasClean})`);
+    const { code, wasClean } = event;
+    // console.log(`❌ WebSocket连接关闭 (code: ${code}, reason: ${reason || '无'}, clean: ${wasClean})`);
     
     // 清理当前连接
     ws = null;
@@ -115,13 +115,13 @@ export function connectWebSocket(onMessage: (data: any) => void) {
 
     // 检查重连次数
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('❌ WebSocket重连次数已达上限，停止重连');
+      // console.error('❌ WebSocket重连次数已达上限，停止重连');
       return;
     }
 
     reconnectAttempts++;
     const delay = Math.min(RECONNECT_DELAY * reconnectAttempts, 30000); // 指数退避，最大30秒
-    console.log(`🔄 ${delay / 1000}秒后尝试第 ${reconnectAttempts} 次重连...`);
+    // console.log(`🔄 ${delay / 1000}秒后尝试第 ${reconnectAttempts} 次重连...`);
     
     reconnectTimer = window.setTimeout(() => {
       // 重新连接时保留所有处理器

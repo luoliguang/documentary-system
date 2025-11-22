@@ -24,21 +24,56 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="客户" prop="customer_id">
+        <el-form-item label="客户公司" prop="company_id">
+          <el-select
+            v-model="form.company_id"
+            placeholder="请选择客户公司（可搜索公司名）"
+            filterable
+            style="width: 100%"
+            @change="handleCompanyChange"
+            @search="handleCompanySearch"
+          >
+            <el-option
+              v-for="company in companies"
+              :key="company.id"
+              :label="`${company.company_name}${company.company_code ? ' (' + company.company_code + ')' : ''} (${company.user_count || 0}个账号, ${company.order_count || 0}个订单)`"
+              :value="company.id"
+            />
+          </el-select>
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            提示：选择客户公司后，系统会自动关联该公司的第一个客户账号
+          </div>
+        </el-form-item>
+        
+        <el-form-item v-if="form.company_id && companyCustomers.length > 0" label="关联客户账号" prop="customer_id">
           <el-select
             v-model="form.customer_id"
-            placeholder="请选择客户"
+            placeholder="请选择具体客户账号"
             filterable
             style="width: 100%"
             @change="handleCustomerChange"
           >
             <el-option
-              v-for="customer in customers"
+              v-for="customer in companyCustomers"
               :key="customer.id"
-              :label="`${customer.company_name || customer.username} (${customer.customer_code})`"
+              :label="`${customer.username}${customer.customer_code ? ' (' + customer.customer_code + ')' : ''}`"
               :value="customer.id"
             />
           </el-select>
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            提示：该公司的所有账号都会看到此订单
+          </div>
+        </el-form-item>
+        <el-form-item v-else-if="form.company_id && companyCustomers.length === 0" label="关联客户账号">
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            <template #title>
+              <span>该公司暂无客户账号，请先创建客户账号</span>
+            </template>
+          </el-alert>
         </el-form-item>
 
         <el-form-item label="客户订单编号">
@@ -251,7 +286,8 @@ const router = useRouter();
 const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
-const customers = ref<any[]>([]);
+const companies = ref<any[]>([]);
+const companyCustomers = ref<any[]>([]);
 const uploadAreaRef = ref<HTMLElement | null>(null);
 const isUploadAreaFocused = ref(false);
 
@@ -272,6 +308,7 @@ const getCurrentDateTime = () => {
 
 const form = reactive({
   order_number: '',
+  company_id: undefined as number | undefined,
   customer_id: undefined as number | undefined,
   customer_code: '',
   customer_order_number: '',
@@ -300,8 +337,11 @@ const rules: FormRules = {
   order_number: [
     { required: true, message: '请输入订单编号', trigger: 'blur' },
   ],
+  company_id: [
+    { required: true, message: '请选择客户公司', trigger: 'change' },
+  ],
   customer_id: [
-    { required: true, message: '请选择客户', trigger: 'change' },
+    { required: true, message: '请选择客户账号', trigger: 'change' },
   ],
   status: [
     { required: true, message: '请选择订单状态', trigger: 'change' },
@@ -317,17 +357,57 @@ const disabledFutureDate = (time: Date) => {
   return time.getTime() > now.getTime();
 };
 
-const loadCustomers = async () => {
+const loadCompanies = async (search?: string) => {
   try {
-    const response = await ordersApi.getCustomers();
-    customers.value = response.customers;
+    const response = await ordersApi.getCustomerCompanies({ search });
+    companies.value = response.companies;
+    
+    // 如果已选择公司，加载该公司的客户列表
+    if (form.company_id) {
+      await loadCompanyCustomers(form.company_id);
+    }
+  } catch (error) {
+    ElMessage.error('加载客户公司列表失败');
+  }
+};
+
+const loadCompanyCustomers = async (companyId: number) => {
+  try {
+    // 直接通过 company_id 查询该公司的所有客户
+    const response = await ordersApi.getCustomers({ company_id: companyId });
+    companyCustomers.value = response.customers;
+    
+    // 自动选择第一个客户账号
+    if (companyCustomers.value.length > 0 && !form.customer_id) {
+      const firstCustomerId = companyCustomers.value[0].id;
+      form.customer_id = firstCustomerId;
+      handleCustomerChange(firstCustomerId);
+    }
   } catch (error) {
     ElMessage.error('加载客户列表失败');
   }
 };
 
+const handleCompanySearch = (search: string) => {
+  if (search) {
+    loadCompanies(search);
+  } else {
+    loadCompanies();
+  }
+};
+
+const handleCompanyChange = async (companyId: number) => {
+  form.customer_id = undefined;
+  form.customer_code = '';
+  companyCustomers.value = [];
+  
+  if (companyId) {
+    await loadCompanyCustomers(companyId);
+  }
+};
+
 const handleCustomerChange = (customerId: number) => {
-  const customer = customers.value.find((c) => c.id === customerId);
+  const customer = companyCustomers.value.find((c) => c.id === customerId);
   if (customer) {
     form.customer_code = customer.customer_code;
   }
@@ -478,9 +558,17 @@ const handleSubmit = async () => {
 
   await formRef.value.validate(async (valid) => {
     if (valid) {
+      // 确保customer_id已设置
+      if (!form.customer_id) {
+        ElMessage.error('请选择客户账号');
+        return;
+      }
+      
       loading.value = true;
       try {
-        await ordersApi.createOrder(form);
+        // 只传递必要的字段，不传递company_id（后端会自动从customer_id获取）
+        const { company_id, ...orderData } = form;
+        await ordersApi.createOrder(orderData);
         ElMessage.success('订单创建成功');
         router.push('/');
       } catch (error: any) {
@@ -493,7 +581,7 @@ const handleSubmit = async () => {
 };
 
 onMounted(() => {
-  loadCustomers();
+  loadCompanies();
   // 加载配置选项
   loadOrderTypes();
   loadOrderStatuses();

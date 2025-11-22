@@ -32,8 +32,12 @@ export async function canAccessOrder(
   }
 
   if (role === 'customer') {
+    // 客户可以访问同一公司的所有订单
     const result = await pool.query(
-      'SELECT id FROM orders WHERE id = $1 AND customer_id = $2',
+      `SELECT o.id 
+       FROM orders o
+       INNER JOIN users u ON o.customer_id = u.id
+       WHERE o.id = $1 AND u.company_id = (SELECT company_id FROM users WHERE id = $2)`,
       [orderId, userId]
     );
     return result.rows.length > 0;
@@ -90,8 +94,8 @@ export async function buildOrderDataAccessFilter(
   }
 
   if (role === 'customer') {
-    // 客户只能查看自己的订单
-    whereConditions.push(`o.customer_id = $${paramIndex++}`);
+    // 客户可以查看同一公司的所有订单
+    whereConditions.push(`o.company_id = (SELECT company_id FROM users WHERE id = $${paramIndex++})`);
     params.push(userId);
     return { whereConditions, params, paramIndex };
   }
@@ -262,10 +266,32 @@ export async function canAccessFollowUp(
   }
 
   if (role === 'customer') {
-    // 客户只能查看标记为可见的跟进记录，且必须是自己的订单
-    if (followUp.customer_id !== userId) {
+    // 客户可以查看同一公司的订单的跟进记录（标记为可见的）
+    // 检查订单是否属于同一公司
+    const userResult = await pool.query(
+      'SELECT company_id FROM users WHERE id = $1',
+      [userId]
+    );
+    if (userResult.rows.length === 0) {
       return false;
     }
+    const userCompanyId = userResult.rows[0].company_id;
+    
+    // 获取订单的公司ID
+    const orderResult = await pool.query(
+      'SELECT company_id FROM orders WHERE id = $1',
+      [followUp.order_id]
+    );
+    if (orderResult.rows.length === 0) {
+      return false;
+    }
+    const orderCompanyId = orderResult.rows[0].company_id;
+    
+    // 检查是否属于同一公司
+    if (userCompanyId === null || orderCompanyId === null || userCompanyId !== orderCompanyId) {
+      return false;
+    }
+    
     // 还需要检查is_visible_to_customer，但这个在查询时处理
     return true;
   }
@@ -285,9 +311,11 @@ export async function canCreateReminder(
     return false;
   }
 
-  // 检查订单是否属于该客户
+  // 检查订单是否属于该客户的公司
   const result = await pool.query(
-    'SELECT customer_id FROM orders WHERE id = $1',
+    `SELECT o.company_id 
+     FROM orders o
+     WHERE o.id = $1`,
     [orderId]
   );
 
@@ -295,7 +323,22 @@ export async function canCreateReminder(
     return false;
   }
 
-  return result.rows[0].customer_id === userId;
+  const orderCompanyId = result.rows[0].company_id;
+  if (orderCompanyId === null) {
+    return false;
+  }
+
+  // 检查用户的公司ID是否匹配
+  const userResult = await pool.query(
+    'SELECT company_id FROM users WHERE id = $1',
+    [userId]
+  );
+
+  if (userResult.rows.length === 0) {
+    return false;
+  }
+
+  return userResult.rows[0].company_id === orderCompanyId;
 }
 
 /**

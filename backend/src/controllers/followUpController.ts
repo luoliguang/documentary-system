@@ -16,6 +16,7 @@ import {
   canCreateFollowUp,
   canAccessFollowUp,
 } from '../services/permissionService.js';
+import { getOrderDisplayNumberSimple, getOrderDisplayInfo } from '../utils/orderDisplayUtils.js';
 
 /**
  * 创建跟进记录
@@ -56,26 +57,68 @@ export const createOrderFollowUp = async (
       is_visible_to_customer,
     });
 
+    // 记录操作日志
+    const { addOrderActivity } = await import('../services/activityService.js');
+    await addOrderActivity({
+      orderId: order_id,
+      userId: user.userId,
+      actionType: 'follow_up_added',
+      actionText: `生产跟单添加跟进：${content}`,
+      extraData: {
+        follow_up_id: followUp.id,
+        content,
+      },
+      isVisibleToCustomer: is_visible_to_customer,
+    });
+
     // 通知管理员和客户
     const { emitNotificationCreated } = await import('../websocket/emitter.js');
     
     try {
       const adminUserIds = await getAllAdminUserIds();
       if (adminUserIds.length > 0) {
-        const title = `跟进记录：${orderInfo.order_number}`;
-        const contentText = `生产跟单${user.username || '用户'}对订单${orderInfo.order_number}添加了跟进记录。\n内容：${content}`;
-
+        // 为每个管理员创建个性化通知（虽然管理员都是admin角色，但保持一致性）
         for (const adminId of adminUserIds) {
-          const createdNotification = await createNotification({
-            user_id: adminId,
-            type: 'reminder',
-            title,
-            content: contentText,
-            related_id: order_id,
-            related_type: 'order',
-          });
-          // 实时推送通知
-          emitNotificationCreated(createdNotification);
+          try {
+            // 获取接收通知的用户角色（虽然都是admin，但保持代码一致性）
+            const userResult = await pool.query(
+              'SELECT role FROM users WHERE id = $1',
+              [adminId]
+            );
+            const recipientRole = userResult.rows[0]?.role || 'admin';
+            
+            // 根据接收者角色生成订单编号显示
+            const displayNumber = getOrderDisplayNumberSimple(
+              {
+                order_number: orderInfo.order_number,
+                customer_order_number: orderInfo.customer_order_number,
+              },
+              recipientRole
+            );
+            
+            const title = `跟进记录：${displayNumber}`;
+            const orderInfoText = getOrderDisplayInfo(
+              {
+                order_number: orderInfo.order_number,
+                customer_order_number: orderInfo.customer_order_number,
+              },
+              recipientRole
+            );
+            const contentText = `生产跟单${user.username || '用户'}对订单添加了跟进记录。\n${orderInfoText}\n内容：${content}`;
+
+            const createdNotification = await createNotification({
+              user_id: adminId,
+              type: 'reminder',
+              title,
+              content: contentText,
+              related_id: order_id,
+              related_type: 'order',
+            });
+            // 实时推送通知
+            emitNotificationCreated(createdNotification);
+          } catch (notificationError) {
+            console.error('创建跟进记录通知失败:', notificationError);
+          }
         }
       }
     } catch (notificationError) {
@@ -115,8 +158,24 @@ export const createOrderFollowUp = async (
           statusInfo += `\n预计出货日期：${formattedDate}`;
         }
         
-        const title = `订单跟进：${orderInfo.order_number}`;
-        const contentText = `您的订单${orderInfo.order_number}有了新的跟进记录。${statusInfo}\n\n跟进内容：${content}`;
+        // 客户角色，优先显示客户订单编号
+        const displayNumber = getOrderDisplayNumberSimple(
+          {
+            order_number: orderInfo.order_number,
+            customer_order_number: orderInfo.customer_order_number,
+          },
+          'customer' // 客户角色
+        );
+        const orderInfoText = getOrderDisplayInfo(
+          {
+            order_number: orderInfo.order_number,
+            customer_order_number: orderInfo.customer_order_number,
+          },
+          'customer' // 客户角色
+        );
+        
+        const title = `订单跟进：${displayNumber}`;
+        const contentText = `您的订单有了新的跟进记录。${orderInfoText}${statusInfo}\n\n跟进内容：${content}`;
 
         const createdNotification = await createNotification({
           user_id: orderInfo.customer_id,

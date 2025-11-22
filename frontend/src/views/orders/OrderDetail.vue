@@ -213,13 +213,27 @@
       </div>
     </el-card>
 
-    <!-- 跟进记录 -->
-    <FollowUpRecord
-      v-if="order && order.id"
-      :order-id="order.id"
-      :order="order"
-      @updated="loadOrder"
-    />
+    <!-- 订单详情和日志的布局容器 -->
+    <div class="order-detail-layout">
+      <!-- 左侧：跟进记录 -->
+      <div class="order-detail-main">
+        <!-- 跟进记录 -->
+        <FollowUpRecord
+          v-if="order && order.id"
+          :order-id="order.id"
+          :order="order"
+          @updated="loadOrder"
+        />
+      </div>
+
+      <!-- 右侧：订单操作日志时间线（仅电脑端显示） -->
+      <div class="order-detail-sidebar">
+        <OrderActivityTimeline
+          v-if="order && order.activities"
+          :activities="order.activities || []"
+        />
+      </div>
+    </div>
 
     <!-- 编辑订单对话框 -->
     <OrderEditDialog
@@ -259,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Right, DocumentCopy } from '@element-plus/icons-vue';
@@ -267,13 +281,16 @@ import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
 import { ordersApi } from '../../api/orders';
 import { useReminderStats } from '../../composables/useReminderStats';
-import type { Order } from '../../types';
+import type { Order, OrderActivity } from '../../types';
 // @ts-ignore - Vue SFC with script setup
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
 // @ts-ignore - Vue SFC with script setup
 import FollowUpRecord from '../../components/FollowUpRecord.vue';
 // @ts-ignore - Vue SFC with script setup
 import ReminderDialog from '../../components/ReminderDialog.vue';
+// @ts-ignore - Vue SFC with script setup
+import OrderActivityTimeline from '../../components/orders/OrderActivityTimeline.vue';
+import { useWebSocket } from '../../composables/useWebSocket';
 
 const route = useRoute();
 const router = useRouter();
@@ -516,8 +533,39 @@ const submitCustomerNumber = async () => {
   }
 };
 
+// WebSocket 监听订单活动更新
+const ws = useWebSocket();
+let activityHandler: ((data: any) => void) | null = null;
+
 onMounted(() => {
   loadOrder();
+  
+  // 监听订单活动更新
+  const orderId = Number(route.params.id);
+  if (orderId) {
+    activityHandler = (data: any) => {
+      if (data.type === 'order-activity-added' && data.activity?.order_id === orderId) {
+        // 实时添加新活动
+        if (order.value) {
+          if (!order.value.activities) {
+            order.value.activities = [];
+          }
+          // 检查是否已存在（避免重复添加）
+          const exists = order.value.activities.some((a: OrderActivity) => a.id === data.activity.id);
+          if (!exists) {
+            order.value.activities.unshift(data.activity);
+          }
+        }
+      }
+    };
+    ws.on(activityHandler);
+  }
+});
+
+onUnmounted(() => {
+  if (activityHandler) {
+    ws.off(activityHandler);
+  }
 });
 </script>
 
@@ -593,6 +641,45 @@ h4 {
 .empty-state {
   padding: 40px 0;
   text-align: center;
+}
+
+/* 订单详情布局：电脑端侧边栏，移动端垂直排列 */
+.order-detail-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.order-detail-main {
+  flex: 1;
+  min-width: 0; /* 防止 flex 子元素溢出 */
+}
+
+.order-detail-sidebar {
+  width: 100%;
+}
+
+/* 电脑端：侧边栏布局 */
+@media (min-width: 1024px) {
+  .order-detail-layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .order-detail-main {
+    flex: 1;
+    margin-right: 20px;
+  }
+
+  .order-detail-sidebar {
+    width: 380px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
 }
 </style>
 

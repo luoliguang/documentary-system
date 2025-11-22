@@ -34,6 +34,20 @@ export interface ShippingTrackingNumber {
 import { OrderStatus } from '../constants/orderStatus';
 import { OrderType } from '../constants/orderType';
 
+// 订单操作日志类型
+export interface OrderActivity {
+  id: number;
+  order_id: number;
+  user_id: number | null;
+  action_type: string;
+  action_text: string;
+  extra_data: Record<string, any>;
+  is_visible_to_customer: boolean;
+  created_at: string;
+  username?: string;
+  user_role?: string;
+}
+
 // 订单类型
 export interface Order {
   id: number;
@@ -65,6 +79,7 @@ export interface Order {
   contact_name?: string;
   customer_phone?: string;
   customer_email?: string;
+  activities?: OrderActivity[]; // 订单操作日志
 }
 
 // 催货记录类型

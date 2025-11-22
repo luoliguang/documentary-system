@@ -9,6 +9,10 @@ import { AuthRequest } from '../../middleware/auth.js';
 import { canUpdateOrder, canUpdateOrderFieldByRole } from '../../services/permissionService.js';
 import { ORDER_STATUS } from '../../constants/orderStatus.js';
 import { ORDER_ASSIGNMENT_COLUMNS } from '../../services/orderAssignmentService.js';
+import { addOrderActivity } from '../../services/activityService.js';
+import { getOrderTypeLabel } from '../../constants/orderType.js';
+import { getOrderStatusLabel } from '../../constants/orderStatus.js';
+import { arraysEqualIgnoreOrder, objectArraysEqual } from '../../utils/arrayUtils.js';
 
 /**
  * 更新订单
@@ -43,6 +47,24 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
     }
 
     const oldOrder = oldOrderResult.rows[0];
+    
+    // 解析旧订单的 JSON 字段
+    let oldImages: string[] = [];
+    let oldTrackingNumbers: any[] = [];
+    try {
+      if (oldOrder.images) {
+        oldImages = typeof oldOrder.images === 'string' 
+          ? JSON.parse(oldOrder.images) 
+          : oldOrder.images;
+      }
+      if (oldOrder.shipping_tracking_numbers) {
+        oldTrackingNumbers = typeof oldOrder.shipping_tracking_numbers === 'string'
+          ? JSON.parse(oldOrder.shipping_tracking_numbers)
+          : oldOrder.shipping_tracking_numbers;
+      }
+    } catch (parseError) {
+      console.error('解析旧订单 JSON 字段失败:', parseError);
+    }
 
     // 使用权限服务检查更新权限
     const canUpdate = await canUpdateOrder(user.userId, user.role, Number(id));
@@ -267,6 +289,206 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
 
     const updatedOrder = fullOrderResult.rows[0];
     
+    // 记录操作日志
+    // 收集所有需要记录的活动，然后批量处理
+    const activitiesToCreate: Array<{
+      orderId: number;
+      userId: number;
+      actionType: any;
+      actionText: string;
+      extraData: any;
+      isVisibleToCustomer: boolean;
+    }> = [];
+    
+    if (status && status !== oldOrder.status) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'status_changed',
+        actionText: `订单状态变更为：${getOrderStatusLabel(status as any)}`,
+        extraData: {
+          old_status: oldOrder.status,
+          new_status: status,
+        },
+        isVisibleToCustomer: true,
+      });
+    }
+    
+    if (is_completed !== undefined && is_completed !== oldOrder.is_completed) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'completed',
+        actionText: is_completed ? '标记订单为已完成生产' : '取消完成标记',
+        extraData: { is_completed },
+        isVisibleToCustomer: true,
+      });
+    }
+    
+    if (can_ship !== undefined && can_ship !== oldOrder.can_ship) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'can_ship',
+        actionText: can_ship ? '标记订单可以出货' : '取消可出货标记',
+        extraData: { can_ship },
+        isVisibleToCustomer: true,
+      });
+    }
+    
+    if (estimated_ship_date !== undefined && estimated_ship_date !== oldOrder.estimated_ship_date) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'estimated_ship_date_updated',
+        actionText: estimated_ship_date 
+          ? `预计出货日期：${new Date(estimated_ship_date).toLocaleDateString('zh-CN')}`
+          : '清空预计出货日期',
+        extraData: { estimated_ship_date },
+        isVisibleToCustomer: true,
+      });
+    }
+    
+    if (notes !== undefined && notes !== oldOrder.notes) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'note_added',
+        actionText: notes ? `添加备注：${notes}` : '清空备注',
+        extraData: { notes },
+        isVisibleToCustomer: true,
+      });
+    }
+    
+    if (internal_notes !== undefined && internal_notes !== oldOrder.internal_notes) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'internal_note_added',
+        actionText: internal_notes ? `添加内部备注：${internal_notes}` : '清空内部备注',
+        extraData: { internal_notes },
+        isVisibleToCustomer: false,
+      });
+    }
+    
+    if (customer_order_number !== undefined && customer_order_number !== oldOrder.customer_order_number) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'customer_order_number_updated',
+        actionText: customer_order_number 
+          ? `客户订单编号：${customer_order_number}`
+          : '清空客户订单编号',
+        extraData: { customer_order_number },
+        isVisibleToCustomer: true,
+      });
+    }
+    
+    // 检查图片是否真正变化
+    if (images !== undefined) {
+      const newImages = Array.isArray(images) ? images : [];
+      // 只有图片真正变化时才记录日志
+      if (!arraysEqualIgnoreOrder(oldImages, newImages)) {
+        const addedCount = newImages.filter(img => !oldImages.includes(img)).length;
+        const removedCount = oldImages.filter(img => !newImages.includes(img)).length;
+        let actionText = `更新订单图片（${newImages.length}张）`;
+        if (addedCount > 0 && removedCount > 0) {
+          actionText = `更新订单图片（新增${addedCount}张，删除${removedCount}张，共${newImages.length}张）`;
+        } else if (addedCount > 0) {
+          actionText = `新增订单图片（${addedCount}张，共${newImages.length}张）`;
+        } else if (removedCount > 0) {
+          actionText = `删除订单图片（${removedCount}张，剩余${newImages.length}张）`;
+        } else if (newImages.length === 0) {
+          actionText = '清空订单图片';
+        }
+        
+        activitiesToCreate.push({
+          orderId: Number(id),
+          userId: user.userId,
+          actionType: 'images_updated',
+          actionText,
+          extraData: { 
+            image_count: newImages.length,
+            added_count: addedCount,
+            removed_count: removedCount,
+          },
+          isVisibleToCustomer: true,
+        });
+      }
+    }
+    
+    // 检查发货单号是否真正变化
+    if (shipping_tracking_numbers !== undefined) {
+      const newTrackingNumbers = Array.isArray(shipping_tracking_numbers) ? shipping_tracking_numbers : [];
+      // 比较发货单号数组（基于 number 字段）
+      if (!objectArraysEqual(oldTrackingNumbers, newTrackingNumbers, 'number')) {
+        const trackingCount = newTrackingNumbers.length;
+        activitiesToCreate.push({
+          orderId: Number(id),
+          userId: user.userId,
+          actionType: 'tracking_numbers_updated',
+          actionText: trackingCount > 0 
+            ? `更新发货单号（${trackingCount}个）`
+            : '清空发货单号',
+          extraData: { tracking_count: trackingCount },
+          isVisibleToCustomer: true,
+        });
+      }
+    }
+    
+    // 如果没有特定字段变化，记录通用更新
+    if (activitiesToCreate.length === 0 && updates.length > 0) {
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'updated',
+        actionText: '更新订单信息',
+        extraData: {
+          updated_fields: updates.map(u => u.split('=')[0].trim()),
+        },
+        isVisibleToCustomer: false,
+      });
+    }
+    
+    // 如果同时更新了多个字段（3个或以上），合并为一条综合记录
+    if (activitiesToCreate.length >= 3) {
+      // 合并为一条综合更新记录
+      const fieldNames = activitiesToCreate.map(a => {
+        const typeMap: Record<string, string> = {
+          status_changed: '状态',
+          completed: '完成标记',
+          can_ship: '可出货标记',
+          estimated_ship_date_updated: '预计出货日期',
+          note_added: '备注',
+          internal_note_added: '内部备注',
+          customer_order_number_updated: '客户订单编号',
+          images_updated: '图片',
+          tracking_numbers_updated: '发货单号',
+        };
+        return typeMap[a.actionType] || a.actionType;
+      });
+      
+      // 删除单独的活动记录，创建一条合并记录
+      activitiesToCreate.length = 0;
+      activitiesToCreate.push({
+        orderId: Number(id),
+        userId: user.userId,
+        actionType: 'updated',
+        actionText: `批量更新订单：${fieldNames.join('、')}`,
+        extraData: {
+          updated_fields: fieldNames,
+          update_count: fieldNames.length,
+        },
+        isVisibleToCustomer: true, // 批量更新对客户可见
+      });
+    }
+    
+    // 并行执行所有日志记录
+    const activityPromises = activitiesToCreate.map(activity => 
+      addOrderActivity(activity)
+    );
+    await Promise.all(activityPromises);
+    
     // 实时推送
     const { emitOrderUpdated } = await import('../../websocket/emitter.js');
     emitOrderUpdated(Number(id), updatedOrder);
@@ -313,6 +535,20 @@ export const completeOrder = async (req: AuthRequest, res: Response) => {
 
     const completedOrder = result.rows[0];
     
+    // 记录操作日志
+    await addOrderActivity({
+      orderId: Number(id),
+      userId: user.userId,
+      actionType: 'completed',
+      actionText: '标记订单为已完成生产',
+      extraData: { 
+        old_status: order.status,
+        new_status: ORDER_STATUS.COMPLETED,
+        notes: notes || null,
+      },
+      isVisibleToCustomer: true,
+    });
+    
     // 实时推送
     const { emitOrderUpdated } = await import('../../websocket/emitter.js');
     emitOrderUpdated(Number(id), completedOrder);
@@ -357,6 +593,16 @@ export const updateCustomerOrderNumber = async (
     );
 
     const updatedOrder = result.rows[0];
+    
+    // 记录操作日志
+    await addOrderActivity({
+      orderId: Number(id),
+      userId: user.userId,
+      actionType: 'customer_order_number_updated',
+      actionText: `客户提交订单编号：${customer_order_number}`,
+      extraData: { customer_order_number },
+      isVisibleToCustomer: true,
+    });
     
     // 实时推送
     const { emitOrderUpdated } = await import('../../websocket/emitter.js');

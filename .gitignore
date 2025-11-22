@@ -306,3 +306,7 @@ database.dbml
 REALTIME_SETUP.md
 NOTIFICATION_SETTINGS.md
 Grok.md
+database/migrations/README_COMPANY_MIGRATION.md
+deploy/websocket-debug.md
+database/README_ORDER_ACTIVITIES_MIGRATION.md
+docs/CUSTOMER_CODE_EXPLANATION.md

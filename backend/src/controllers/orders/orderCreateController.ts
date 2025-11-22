@@ -11,6 +11,7 @@ import { ORDER_STATUS } from '../../constants/orderStatus.js';
 import { ORDER_TYPE } from '../../constants/orderType.js';
 import { ErrorFactory } from '../../errors/AppError.js';
 import { asyncHandler } from '../../errors/errorHandler.js';
+import { addOrderActivity } from '../../services/activityService.js';
 
 /**
  * 创建订单（仅管理员）
@@ -64,7 +65,7 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
   }
 
   const customer = await pool.query(
-    'SELECT id, customer_code FROM users WHERE id = $1 AND role = $2',
+    'SELECT id, customer_code, company_id, company_name FROM users WHERE id = $1 AND role = $2',
     [customer_id, 'customer']
   );
   if (customer.rows.length === 0) {
@@ -72,12 +73,65 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
   }
 
   const finalCustomerCode = customer_code || customer.rows[0].customer_code;
+  let finalCompanyId = customer.rows[0].company_id;
+
+  // 如果客户没有关联公司，尝试通过 company_name 查找或创建
+  if (!finalCompanyId) {
+    const customerCompanyName = customer.rows[0].company_name;
+    if (customerCompanyName) {
+      // 查找或创建公司
+      let companyResult = await pool.query(
+        'SELECT id FROM customer_companies WHERE company_name = $1',
+        [customerCompanyName]
+      );
+      if (companyResult.rows.length === 0) {
+        // 创建新公司
+        companyResult = await pool.query(
+          `INSERT INTO customer_companies (company_name, notes)
+           VALUES ($1, '由订单创建自动生成') RETURNING id`,
+          [customerCompanyName]
+        );
+      }
+      finalCompanyId = companyResult.rows[0].id;
+      
+      // 更新用户的 company_id
+      await pool.query(
+        'UPDATE users SET company_id = $1 WHERE id = $2',
+        [finalCompanyId, customer_id]
+      );
+    } else {
+      // 如果没有公司名，创建一个基于客户编号或用户名的公司
+      const generatedCompanyName = finalCustomerCode 
+        ? `${finalCustomerCode}（个人客户）`
+        : `客户${customer_id}（个人客户）`;
+      
+      let companyResult = await pool.query(
+        'SELECT id FROM customer_companies WHERE company_name = $1',
+        [generatedCompanyName]
+      );
+      if (companyResult.rows.length === 0) {
+        companyResult = await pool.query(
+          `INSERT INTO customer_companies (company_name, notes)
+           VALUES ($1, '由订单创建自动生成（个人客户）') RETURNING id`,
+          [generatedCompanyName]
+        );
+      }
+      finalCompanyId = companyResult.rows[0].id;
+      
+      // 更新用户的 company_id
+      await pool.query(
+        'UPDATE users SET company_id = $1 WHERE id = $2',
+        [finalCompanyId, customer_id]
+      );
+    }
+  }
 
   const result = await pool.query(
     `INSERT INTO orders (
         order_number, customer_id, customer_code, customer_order_number,
-        status, order_type, notes, internal_notes, estimated_ship_date, order_date, images, shipping_tracking_numbers, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        status, order_type, notes, internal_notes, estimated_ship_date, order_date, 
+        images, shipping_tracking_numbers, company_id, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
     [
       order_number,
       customer_id,
@@ -91,6 +145,7 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
       order_date || null,
       images ? JSON.stringify(images) : '[]',
       shipping_tracking_numbers ? JSON.stringify(shipping_tracking_numbers) : '[]',
+      finalCompanyId,
       user.userId,
     ]
   );
@@ -100,6 +155,23 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
        VALUES ($1, $2, $3, $4)`,
     [result.rows[0].id, status, user.userId, '创建订单']
   );
+
+  // 记录操作日志
+  const customerInfo = customer.rows[0];
+  await addOrderActivity({
+    orderId: result.rows[0].id,
+    userId: user.userId,
+    actionType: 'created',
+    actionText: `创建订单 ${order_number}`,
+    extraData: {
+      order_number,
+      customer_id: customer_id,
+      customer_name: customerInfo.company_name || '未知客户',
+      status,
+      order_type,
+    },
+    isVisibleToCustomer: true,
+  });
 
   res.status(201).json({
     message: '订单创建成功',

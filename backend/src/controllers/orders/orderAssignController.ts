@@ -17,6 +17,8 @@ import {
   syncOrderAssignments,
   ORDER_ASSIGNMENT_COLUMNS,
 } from '../../services/orderAssignmentService.js';
+import { addOrderActivity } from '../../services/activityService.js';
+import { getOrderDisplayNumberSimple, getOrderDisplayInfo } from '../../utils/orderDisplayUtils.js';
 import type { PoolClient } from 'pg';
 
 /**
@@ -173,9 +175,34 @@ export const assignOrderToProductionManager = async (
     if (added.length > 0) {
       for (const pmId of added) {
         try {
+          // 获取接收通知的用户角色
+          const userResult = await pool.query(
+            'SELECT role FROM users WHERE id = $1',
+            [pmId]
+          );
+          const recipientRole = userResult.rows[0]?.role;
+          
           const orderTypeText = getOrderTypeLabel(order.order_type as any) || order.order_type;
-          const title = `订单分配：${order.order_number}`;
-          const content = `您已被分配处理订单${order.order_number}（${orderTypeText}类型）。\n客户：${fullOrder.company_name || fullOrder.contact_name || '未知'}\n客户订单编号：${order.customer_order_number || '无'}`;
+          
+          // 根据接收者角色生成订单编号显示
+          const displayNumber = getOrderDisplayNumberSimple(
+            {
+              order_number: order.order_number,
+              customer_order_number: order.customer_order_number,
+            },
+            recipientRole
+          );
+          
+          const title = `订单分配：${displayNumber}`;
+          const orderInfo = getOrderDisplayInfo(
+            {
+              order_number: order.order_number,
+              customer_order_number: order.customer_order_number,
+            },
+            recipientRole
+          );
+          const content = `您已被分配处理订单（${orderTypeText}类型）。\n${orderInfo}\n客户：${fullOrder.company_name || fullOrder.contact_name || '未知'}`;
+          
           const createdNotification = await createNotification({
             user_id: pmId,
             type: 'assignment',
@@ -200,6 +227,37 @@ export const assignOrderToProductionManager = async (
       } catch (error) {
         console.error('标记通知为已读失败:', error);
       }
+    }
+
+    // 记录操作日志
+    if (current.length > 0) {
+      const pmNames = fullOrder.assigned_to_names || [];
+      const actionText = pmNames.length > 0 
+        ? `将订单分配给：${pmNames.join('、')}`
+        : '分配订单给生产跟单';
+      
+      await addOrderActivity({
+        orderId,
+        userId: user.userId,
+        actionType: 'assigned',
+        actionText,
+        extraData: {
+          assigned_to_ids: current,
+          assigned_to_names: pmNames,
+        },
+        isVisibleToCustomer: true,
+      });
+    } else if (removed.length > 0) {
+      await addOrderActivity({
+        orderId,
+        userId: user.userId,
+        actionType: 'assigned',
+        actionText: '取消订单分配',
+        extraData: {
+          removed_ids: removed,
+        },
+        isVisibleToCustomer: true,
+      });
     }
 
     // 实时推送

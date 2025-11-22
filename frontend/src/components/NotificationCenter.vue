@@ -65,8 +65,19 @@
           :class="['notification-item', { unread: !notification.is_read }]"
         >
           <el-checkbox
-            v-model="selectedNotifications"
-            :value="notification.id"
+            :model-value="selectedNotifications.includes(notification.id)"
+            @update:model-value="(val: boolean) => {
+              if (val) {
+                if (!selectedNotifications.includes(notification.id)) {
+                  selectedNotifications.push(notification.id);
+                }
+              } else {
+                const index = selectedNotifications.indexOf(notification.id);
+                if (index > -1) {
+                  selectedNotifications.splice(index, 1);
+                }
+              }
+            }"
             @click.stop
             style="margin-right: 8px;"
           />

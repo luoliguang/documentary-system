@@ -87,7 +87,7 @@ export const getFollowUpsByOrderId = async (
     `;
     params = [order_id, user_id];
   } else {
-    // 客户只能查看标记为可见的跟进记录
+    // 客户可以查看同一公司的订单的跟进记录（标记为可见的）
     query = `
       SELECT 
         f.*,
@@ -98,7 +98,7 @@ export const getFollowUpsByOrderId = async (
       LEFT JOIN orders o ON f.order_id = o.id
       WHERE f.order_id = $1 
         AND f.is_visible_to_customer = true
-        AND o.customer_id = $2
+        AND o.company_id = (SELECT company_id FROM users WHERE id = $2)
       ORDER BY f.created_at DESC
     `;
     params = [order_id, user_id];
@@ -151,6 +151,7 @@ export const getFollowUpById = async (
     `;
     params = [id, user_id];
   } else {
+    // 客户可以查看同一公司的订单的跟进记录（标记为可见的）
     query = `
       SELECT 
         f.*,
@@ -161,7 +162,7 @@ export const getFollowUpById = async (
       LEFT JOIN orders o ON f.order_id = o.id
       WHERE f.id = $1 
         AND f.is_visible_to_customer = true
-        AND o.customer_id = $2
+        AND o.company_id = (SELECT company_id FROM users WHERE id = $2)
     `;
     params = [id, user_id];
   }

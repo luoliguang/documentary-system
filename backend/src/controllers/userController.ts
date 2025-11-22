@@ -350,6 +350,35 @@ export const createUser = async (req: AuthRequest, res: Response) => {
     // 加密密码
     const passwordHash = await hashPassword(password);
 
+    // 如果是客户角色且有公司名，查找或创建公司记录并设置 company_id
+    let finalCompanyId: number | null = null;
+    if (role === 'customer' && company_name) {
+      const trimmedCompanyName = String(company_name).trim();
+      if (trimmedCompanyName) {
+        // 查找是否已存在该公司
+        let companyResult = await pool.query(
+          'SELECT id FROM customer_companies WHERE company_name = $1',
+          [trimmedCompanyName]
+        );
+        
+        if (companyResult.rows.length === 0) {
+          // 创建新公司记录
+          companyResult = await pool.query(
+            `INSERT INTO customer_companies (company_name, contact_name, email, phone, notes)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [
+              trimmedCompanyName,
+              contact_name || null,
+              email || null,
+              phone || null,
+              'Auto-created when creating user'
+            ]
+          );
+        }
+        finalCompanyId = companyResult.rows[0].id;
+      }
+    }
+
     // 检查 admin_notes 字段是否存在
     let hasAdminNotes = false;
     try {
@@ -447,8 +476,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         result = await pool.query(
           `INSERT INTO users (
             account, username, password_hash, role, customer_code, company_name, 
-            contact_name, email, phone, admin_notes, assigned_order_types
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            contact_name, email, phone, admin_notes, assigned_order_types, company_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING id, account, username, customer_code, role, company_name, contact_name, 
                     email, phone, assigned_order_types, admin_notes, is_active, created_at`,
           [
@@ -463,6 +492,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
             phone || null,
             admin_notes || null,
             assigned_order_types ? JSON.stringify(assigned_order_types) : '[]',
+            finalCompanyId,
           ]
         );
         console.log('\n========== 数据库插入返回结果 ==========');
@@ -523,8 +553,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       result = await pool.query(
         `INSERT INTO users (
           account, username, password_hash, role, customer_code, company_name, 
-          contact_name, email, phone, assigned_order_types
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          contact_name, email, phone, assigned_order_types, company_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id, account, username, customer_code, role, company_name, contact_name, 
                   email, phone, assigned_order_types, is_active, created_at`,
         [
@@ -538,6 +568,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
           email || null,
           phone || null,
           assigned_order_types ? JSON.stringify(assigned_order_types) : '[]',
+          finalCompanyId,
         ]
       );
       result.rows[0].admin_notes = null;
@@ -561,8 +592,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       result = await pool.query(
         `INSERT INTO users (
           username, password_hash, role, customer_code, company_name, 
-          contact_name, email, phone, admin_notes, assigned_order_types
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          contact_name, email, phone, admin_notes, assigned_order_types, company_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id, username, customer_code, role, company_name, contact_name, 
                   email, phone, assigned_order_types, admin_notes, is_active, created_at`,
         [
@@ -576,6 +607,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
           phone || null,
           admin_notes || null,
           assigned_order_types ? JSON.stringify(assigned_order_types) : '[]',
+          finalCompanyId,
         ]
       );
     } else {
@@ -583,8 +615,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       result = await pool.query(
         `INSERT INTO users (
           username, password_hash, role, customer_code, company_name, 
-          contact_name, email, phone, assigned_order_types
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          contact_name, email, phone, assigned_order_types, company_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id, username, customer_code, role, company_name, contact_name, 
                   email, phone, assigned_order_types, is_active, created_at`,
         [
@@ -597,6 +629,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
           email || null,
           phone || null,
           assigned_order_types ? JSON.stringify(assigned_order_types) : '[]',
+          finalCompanyId,
         ]
       );
       result.rows[0].admin_notes = null;

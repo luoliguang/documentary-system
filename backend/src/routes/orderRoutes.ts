@@ -9,6 +9,7 @@ import {
   updateCustomerOrderNumber,
   getOrderStatusHistory,
   getCustomers,
+  getCustomerCompanies,
   getProductionManagers,
   assignOrderToProductionManager,
 } from '../controllers/orders/index.js';
@@ -38,6 +39,9 @@ router.get('/', validateQuery(getOrdersQuerySchema), getOrders);
 
 // 获取所有客户列表（仅管理员）- 必须在 /:id 之前
 router.get('/customers/list', requireAdminOrSupport, getCustomers);
+
+// 获取所有客户公司列表（仅管理员）
+router.get('/companies/list', requireAdminOrSupport, getCustomerCompanies);
 
 // 获取所有生产跟单列表（仅管理员）
 router.get('/production-managers/list', requireAdminOrSupport, getProductionManagers);

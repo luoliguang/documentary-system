@@ -17,3 +17,11 @@ export function emitNotificationCreated(notification: any) {
   });
 }
 
+export function emitOrderActivityAdded(activity: any) {
+  broadcast({
+    type: 'order-activity-added',
+    activity,
+    timestamp: new Date().toISOString(),
+  });
+}
+

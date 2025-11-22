@@ -8,6 +8,7 @@ import { pool } from '../../config/database.js';
 import { AuthRequest } from '../../middleware/auth.js';
 import { canAccessOrder, getProductionManagerOrderTypes, canViewOrderType } from '../../services/permissionService.js';
 import { ORDER_ASSIGNMENT_COLUMNS } from '../../services/orderAssignmentService.js';
+import { getOrderActivities } from '../../services/activityService.js';
 
 /**
  * 获取订单列表（管理员查看所有，客户只能查看自己的）
@@ -256,6 +257,7 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         },
       });
     } else {
+      // 客户角色：查看同一公司的所有订单
       const {
         order_number,
         customer_order_number,
@@ -266,7 +268,7 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         page = 1,
         pageSize = 20,
       } = req.query;
-      let whereConditions = ['o.customer_id = $1'];
+      let whereConditions = ['o.company_id = (SELECT company_id FROM users WHERE id = $1)'];
       params = [user.userId];
       let paramIndex = 2;
 
@@ -404,7 +406,7 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
                ${ORDER_ASSIGNMENT_COLUMNS}
         FROM orders o
         LEFT JOIN users u ON o.customer_id = u.id
-        WHERE o.id = $1 AND o.customer_id = $2
+        WHERE o.id = $1 AND o.company_id = (SELECT company_id FROM users WHERE id = $2)
       `;
       params = [id, user.userId];
     }
@@ -425,6 +427,13 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
       delete order.assigned_to_names;
       delete order.assigned_team;
     }
+
+    // 获取操作日志
+    const activities = await getOrderActivities(Number(id), {
+      userRole: user.role,
+      userId: user.userId,
+    });
+    order.activities = activities;
 
     res.json({ order });
   } catch (error) {
@@ -468,18 +477,91 @@ export const getOrderStatusHistory = async (
 
 /**
  * 获取所有客户列表（仅管理员）
+ * 支持按公司名搜索
  */
 export const getCustomers = async (req: AuthRequest, res: Response) => {
   try {
+    const { company_name, company_id, search } = req.query;
+    
+    let whereConditions: string[] = ["u.role = 'customer'", "u.is_active = true"];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    // 支持按公司ID查询（优先使用，更准确）
+    if (company_id) {
+      whereConditions.push(`u.company_id = $${paramIndex++}`);
+      params.push(company_id);
+    } else if (company_name) {
+      // 支持按公司名搜索（向后兼容）
+      whereConditions.push(`cc.company_name ILIKE $${paramIndex++}`);
+      params.push(`%${company_name}%`);
+    }
+
+    // 支持通用搜索（用户名、公司名、客户编号）
+    if (search) {
+      whereConditions.push(
+        `(u.username ILIKE $${paramIndex++} OR cc.company_name ILIKE $${paramIndex++} OR u.customer_code ILIKE $${paramIndex++})`
+      );
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
     const result = await pool.query(
-      `SELECT id, username, customer_code, company_name, contact_name, email, phone, created_at
-       FROM users WHERE role = 'customer' AND is_active = true
-       ORDER BY created_at DESC`
+      `SELECT u.id, u.username, u.customer_code, u.company_name, u.contact_name, 
+              u.email, u.phone, u.company_id, cc.company_name as company_full_name,
+              u.created_at
+       FROM users u
+       LEFT JOIN customer_companies cc ON u.company_id = cc.id
+       ${whereClause}
+       ORDER BY cc.company_name, u.created_at DESC`,
+      params
     );
 
     res.json({ customers: result.rows });
   } catch (error) {
     console.error('获取客户列表错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+/**
+ * 获取所有客户公司列表（仅管理员）
+ */
+export const getCustomerCompanies = async (req: AuthRequest, res: Response) => {
+  try {
+    const { search } = req.query;
+    
+    let whereConditions: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (search) {
+      whereConditions.push(`cc.company_name ILIKE $${paramIndex++}`);
+      params.push(`%${search}%`);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    const result = await pool.query(
+      `SELECT cc.id, cc.company_name, cc.company_code, cc.contact_name, 
+              cc.email, cc.phone, cc.address, cc.notes,
+              COUNT(DISTINCT u.id) as user_count,
+              COUNT(DISTINCT o.id) as order_count,
+              cc.created_at, cc.updated_at
+       FROM customer_companies cc
+       LEFT JOIN users u ON cc.id = u.company_id AND u.role = 'customer'
+       LEFT JOIN orders o ON cc.id = o.company_id
+       ${whereClause}
+       GROUP BY cc.id
+       ORDER BY cc.company_name`,
+      params
+    );
+
+    res.json({ companies: result.rows });
+  } catch (error) {
+    console.error('获取客户公司列表错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 };

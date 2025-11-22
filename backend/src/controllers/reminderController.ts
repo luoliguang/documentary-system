@@ -6,11 +6,13 @@ import {
   getAllAdminUserIds,
   createNotification,
 } from '../services/notificationService.js';
+import { getOrderDisplayNumberSimple, getOrderDisplayInfo } from '../utils/orderDisplayUtils.js';
 import { configService } from '../services/configService.js';
 import {
   canCreateReminder,
   canRespondReminder,
 } from '../services/permissionService.js';
+import { addOrderActivity } from '../services/activityService.js';
 
 // 催货（客户功能）
 export const createDeliveryReminder = async (
@@ -25,9 +27,11 @@ export const createDeliveryReminder = async (
       return res.status(400).json({ error: '订单ID不能为空' });
     }
 
-    // 验证订单属于当前客户
+    // 验证订单属于当前客户的公司（同一公司的所有账号都可以访问）
     const orderResult = await pool.query(
-      'SELECT id FROM orders WHERE id = $1 AND customer_id = $2',
+      `SELECT o.id 
+       FROM orders o
+       WHERE o.id = $1 AND o.company_id = (SELECT company_id FROM users WHERE id = $2)`,
       [order_id, user.userId]
     );
 
@@ -35,11 +39,14 @@ export const createDeliveryReminder = async (
       return res.status(404).json({ error: '订单不存在或无权访问' });
     }
 
-    // 检查催货节流：获取最近一次催货记录
+    // 检查催货节流：获取最近一次催货记录（同一公司的所有账号）
     const lastReminderResult = await pool.query(
-      `SELECT created_at FROM delivery_reminders 
-       WHERE order_id = $1 AND customer_id = $2 
-       ORDER BY created_at DESC LIMIT 1`,
+      `SELECT dr.created_at 
+       FROM delivery_reminders dr
+       INNER JOIN users u ON dr.customer_id = u.id
+       WHERE dr.order_id = $1 
+         AND u.company_id = (SELECT company_id FROM users WHERE id = $2)
+       ORDER BY dr.created_at DESC LIMIT 1`,
       [order_id, user.userId]
     );
 
@@ -90,24 +97,55 @@ export const createDeliveryReminder = async (
       
       if (adminAndSupportUserIds.length > 0) {
         const reminderTypeText = reminder_type === 'urgent' ? '紧急催单' : '催单';
-        const title = `${reminderTypeText}：${orderInfo.order_number || '订单'}`;
-        const content = message
-          ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。\n催单消息：${message}`
-          : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。`;
-
-        const createdNotifications = await createNotificationsForUsers(adminAndSupportUserIds, {
-          type: 'reminder',
-          title,
-          content,
-          related_id: order_id, // 使用订单ID,方便在订单列表中显示
-          related_type: 'order', // 使用order类型,统一处理
-        });
         
-        // 实时推送通知到所有管理员和客服
+        // 为每个用户创建个性化通知（根据用户角色显示不同的订单编号）
         const { emitNotificationCreated } = await import('../websocket/emitter.js');
-        createdNotifications.forEach((notification: any) => {
-          emitNotificationCreated(notification);
-        });
+        const { createNotification } = await import('../services/notificationService.js');
+        
+        for (const userId of adminAndSupportUserIds) {
+          try {
+            // 获取接收通知的用户角色
+            const userResult = await pool.query(
+              'SELECT role FROM users WHERE id = $1',
+              [userId]
+            );
+            const recipientRole = userResult.rows[0]?.role;
+            
+            // 根据接收者角色生成订单编号显示
+            const displayNumber = getOrderDisplayNumberSimple(
+              {
+                order_number: orderInfo.order_number,
+                customer_order_number: orderInfo.customer_order_number,
+              },
+              recipientRole
+            );
+            
+            const title = `${reminderTypeText}：${displayNumber || '订单'}`;
+            const orderInfoText = getOrderDisplayInfo(
+              {
+                order_number: orderInfo.order_number,
+                customer_order_number: orderInfo.customer_order_number,
+              },
+              recipientRole
+            );
+            const content = message
+              ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单进行了${reminderTypeText}。\n${orderInfoText}\n催单消息：${message}`
+              : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单进行了${reminderTypeText}。\n${orderInfoText}`;
+
+            const createdNotification = await createNotification({
+              user_id: userId,
+              type: 'reminder',
+              title,
+              content,
+              related_id: order_id,
+              related_type: 'order',
+            });
+            
+            emitNotificationCreated(createdNotification);
+          } catch (notificationError) {
+            console.error('创建催单通知失败:', notificationError);
+          }
+        }
       }
     } catch (notificationError) {
       // 通知创建失败不影响催货记录的创建，只记录日志
@@ -350,7 +388,7 @@ export const getDeliveryReminders = async (
       });
       return;
     } else {
-      // 客户只能查看自己的催货记录
+      // 客户可以查看同一公司的所有催货记录
       const { 
         order_number,
         customer_order_number,
@@ -359,7 +397,10 @@ export const getDeliveryReminders = async (
         start_date,
         end_date
       } = req.query;
-      let whereConditions: string[] = [`dr.customer_id = $1`, `dr.is_deleted = false`];
+      let whereConditions: string[] = [
+        `u.company_id = (SELECT company_id FROM users WHERE id = $1)`, 
+        `dr.is_deleted = false`
+      ];
       params = [user.userId];
       let paramIndex = 2;
 
@@ -403,6 +444,7 @@ export const getDeliveryReminders = async (
           o.images
         FROM delivery_reminders dr
         LEFT JOIN orders o ON dr.order_id = o.id
+        LEFT JOIN users u ON dr.customer_id = u.id
         ${whereClause}
         ORDER BY dr.created_at DESC
       `;
@@ -460,13 +502,22 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
     try {
       // 获取订单信息
       const orderResult = await pool.query(
-        `SELECT o.order_number, o.customer_order_number, u.company_name, u.contact_name
+        `SELECT o.order_number, o.customer_order_number, u.company_name, u.contact_name, u.id as customer_id
          FROM orders o
          LEFT JOIN users u ON o.customer_id = u.id
          WHERE o.id = $1`,
         [reminder.order_id]
       );
       const orderInfo = orderResult.rows[0];
+      
+      // 客户角色，优先显示客户订单编号
+      const displayNumber = getOrderDisplayNumberSimple(
+        {
+          order_number: orderInfo.order_number,
+          customer_order_number: orderInfo.customer_order_number,
+        },
+        'customer' // 客户角色
+      );
 
       // 获取回复者信息
       const responderResult = await pool.query(
@@ -477,11 +528,18 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
       const responderName = responderInfo.company_name || responderInfo.username || '管理员';
       const responderRole = responderInfo.role === 'production_manager' ? '生产跟单' : '管理员';
 
-      // 创建通知给客户
-      const title = `${responderRole}已回复您的催单：${orderInfo.order_number || '订单'}`;
+      // 创建通知给客户（客户角色，优先显示客户订单编号）
+      const title = `${responderRole}已回复您的催单：${displayNumber || '订单'}`;
+      const orderInfoText = getOrderDisplayInfo(
+        {
+          order_number: orderInfo.order_number,
+          customer_order_number: orderInfo.customer_order_number,
+        },
+        'customer' // 客户角色
+      );
       const content = admin_response
-        ? `${responderName}（${responderRole}）已回复您的催单：\n${admin_response}`
-        : `${responderName}（${responderRole}）已处理您的催单。`;
+        ? `${responderName}（${responderRole}）已回复您的催单：\n${orderInfoText}\n回复内容：${admin_response}`
+        : `${responderName}（${responderRole}）已处理您的催单。\n${orderInfoText}`;
 
       const createdNotification = await createNotification({
         user_id: reminder.customer_id,
@@ -499,6 +557,22 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
       // 通知创建失败不影响回复操作，只记录日志
       console.error('创建回复通知失败:', notificationError);
     }
+
+    // 记录操作日志
+    await addOrderActivity({
+      orderId: reminder.order_id,
+      userId: user.userId,
+      actionType: 'reminder_replied',
+      actionText: admin_response 
+        ? `客服回复催单：${admin_response}`
+        : '客服已处理催单',
+      extraData: {
+        reminder_id: reminder.id,
+        admin_response,
+        is_resolved,
+      },
+      isVisibleToCustomer: true,
+    });
 
     res.json({
       message: '回复成功',
@@ -747,9 +821,11 @@ export const getOrderReminderStats = async (
     const user = req.user!;
     const { order_id } = req.params;
 
-    // 验证订单属于当前客户
+    // 验证订单属于当前客户的公司（同一公司的所有账号都可以访问）
     const orderResult = await pool.query(
-      'SELECT id FROM orders WHERE id = $1 AND customer_id = $2',
+      `SELECT o.id 
+       FROM orders o
+       WHERE o.id = $1 AND o.company_id = (SELECT company_id FROM users WHERE id = $2)`,
       [order_id, user.userId]
     );
 
@@ -757,14 +833,17 @@ export const getOrderReminderStats = async (
       return res.status(404).json({ error: '订单不存在或无权访问' });
     }
 
-    // 获取催货统计（区分可见和全部记录）
+    // 获取催货统计（同一公司的所有账号的催货记录）
+    // 需要查询同一公司的所有用户的催货记录
     const statsResult = await pool.query(
       `SELECT 
-         COUNT(*) FILTER (WHERE is_deleted = false) as visible_count,
+         COUNT(*) FILTER (WHERE dr.is_deleted = false) as visible_count,
          COUNT(*) as total_count_all,
-         MAX(created_at) as last_reminder_time
-       FROM delivery_reminders 
-       WHERE order_id = $1 AND customer_id = $2`,
+         MAX(dr.created_at) as last_reminder_time
+       FROM delivery_reminders dr
+       INNER JOIN users u ON dr.customer_id = u.id
+       WHERE dr.order_id = $1 
+         AND u.company_id = (SELECT company_id FROM users WHERE id = $2)`,
       [order_id, user.userId]
     );
 
