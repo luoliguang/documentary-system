@@ -52,12 +52,19 @@
             <div v-for="(resourcePerms, resource) in rolePermissions" :key="resource" class="resource-section">
               <h5>{{ getResourceLabel(resource) }}</h5>
               <div class="permissions-list">
-                <el-checkbox
+                <template
                   v-for="(_value, permission) in resourcePerms"
                   :key="permission"
-                  v-model="rolePermissions[resource][permission]"
-                  :label="getPermissionLabel(String(permission))"
-                />
+                >
+                  <el-checkbox
+                    v-if="permission !== 'allowed_order_types'"
+                    :model-value="rolePermissions[resource][permission]"
+                    @update:model-value="(val: boolean) => {
+                      rolePermissions[resource][permission] = val;
+                    }"
+                    :label="getPermissionLabel(String(permission))"
+                  />
+                </template>
               </div>
               <!-- 订单类型权限配置（仅当资源为 orders 时显示） -->
               <div v-if="resource === 'orders'" class="order-types-section">

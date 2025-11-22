@@ -23,6 +23,10 @@
         <el-tab-pane label="权限配置" name="permissions">
           <PermissionManagement />
         </el-tab-pane>
+        
+        <el-tab-pane label="通用配置" name="general">
+          <GeneralConfigManagement />
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -38,6 +42,8 @@ import OrderTypeManagement from './components/OrderTypeManagement.vue';
 import OrderStatusManagement from './components/OrderStatusManagement.vue';
 // @ts-ignore - Vue SFC with script setup
 import PermissionManagement from './components/PermissionManagement.vue';
+// @ts-ignore - Vue SFC with script setup
+import GeneralConfigManagement from './components/GeneralConfigManagement.vue';
 
 const activeTab = ref('roles');
 </script>

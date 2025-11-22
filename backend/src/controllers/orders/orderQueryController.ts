@@ -9,6 +9,7 @@ import { AuthRequest } from '../../middleware/auth.js';
 import { canAccessOrder, getProductionManagerOrderTypes, canViewOrderType } from '../../services/permissionService.js';
 import { ORDER_ASSIGNMENT_COLUMNS } from '../../services/orderAssignmentService.js';
 import { getOrderActivities } from '../../services/activityService.js';
+import { parsePaginationParams } from '../../utils/configHelpers.js';
 
 /**
  * 获取订单列表（管理员查看所有，客户只能查看自己的）
@@ -35,9 +36,11 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         company_name,
         estimated_ship_start,
         estimated_ship_end,
-        page = 1,
-        pageSize = 20,
+        page: pageParam,
+        pageSize: pageSizeParam,
       } = req.query;
+
+      const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
 
       let whereConditions: string[] = [];
       params = [];
@@ -93,8 +96,8 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
           ? `WHERE ${whereConditions.join(' AND ')}`
           : '';
 
-      const offset = (Number(page) - 1) * Number(pageSize);
-      params.push(Number(pageSize), offset);
+      const offset = (page - 1) * pageSize;
+      params.push(pageSize, offset);
 
       query = `
         SELECT o.*, 
@@ -127,9 +130,9 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         pagination: {
           total: parseInt(countResult.rows[0].total),
           page: Number(page),
-          pageSize: Number(pageSize),
+          pageSize,
           totalPages: Math.ceil(
-            parseInt(countResult.rows[0].total) / Number(pageSize)
+            parseInt(countResult.rows[0].total) / pageSize
           ),
         },
       });
@@ -143,9 +146,11 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         is_completed,
         estimated_ship_start,
         estimated_ship_end,
-        page = 1,
-        pageSize = 20,
+        page: pageParam,
+        pageSize: pageSizeParam,
       } = req.query;
+
+      const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
 
       // 获取该生产跟单的订单类型权限
       const assignedTypes = await getProductionManagerOrderTypes(user.userId);
@@ -156,8 +161,8 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
           orders: [],
           pagination: {
             total: 0,
-            page: Number(page),
-            pageSize: Number(pageSize),
+            page,
+            pageSize,
             totalPages: 0,
           },
         });
@@ -196,12 +201,12 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
           // 如果请求的订单类型不在权限范围内，返回空列表
           return res.json({
             orders: [],
-            pagination: {
-              total: 0,
-              page: Number(page),
-              pageSize: Number(pageSize),
-              totalPages: 0,
-            },
+          pagination: {
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0,
+          },
           });
         }
       }
@@ -219,8 +224,8 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       }
 
       const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
-      const offset = (Number(page) - 1) * Number(pageSize);
-      params.push(Number(pageSize), offset);
+      const offset = (page - 1) * pageSize;
+      params.push(pageSize, offset);
 
       query = `
         SELECT o.*, 
@@ -250,9 +255,9 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         pagination: {
           total: parseInt(countResult.rows[0].total),
           page: Number(page),
-          pageSize: Number(pageSize),
+          pageSize,
           totalPages: Math.ceil(
-            parseInt(countResult.rows[0].total) / Number(pageSize)
+            parseInt(countResult.rows[0].total) / pageSize
           ),
         },
       });
@@ -265,9 +270,10 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         is_completed,
         estimated_ship_start,
         estimated_ship_end,
-        page = 1,
-        pageSize = 20,
+        page: pageParam,
+        pageSize: pageSizeParam,
       } = req.query;
+      const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
       let whereConditions = ['o.company_id = (SELECT company_id FROM users WHERE id = $1)'];
       params = [user.userId];
       let paramIndex = 2;
@@ -298,8 +304,8 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       }
 
       const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
-      const offset = (Number(page) - 1) * Number(pageSize);
-      params.push(Number(pageSize), offset);
+      const offset = (page - 1) * pageSize;
+      params.push(pageSize, offset);
 
       // 客户查询时不包含生产跟单信息
       query = `
@@ -332,9 +338,9 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
         pagination: {
           total: parseInt(countResult.rows[0].total),
           page: Number(page),
-          pageSize: Number(pageSize),
+          pageSize,
           totalPages: Math.ceil(
-            parseInt(countResult.rows[0].total) / Number(pageSize)
+            parseInt(countResult.rows[0].total) / pageSize
           ),
         },
       });

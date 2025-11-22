@@ -235,17 +235,20 @@ export const getMyFollowUpSummary = async (req: AuthRequest, res: Response) => {
     }
 
     const {
-      page = 1,
-      pageSize = 20,
+      page: pageParamRaw,
+      pageSize: pageSizeParamRaw,
       status,
       keyword,
       hasFollowUp,
       hasCustomerVisible,
       hasDocument,
     } = req.query;
+    
+    const { parsePaginationParams } = await import('../utils/configHelpers.js');
+    const { page, pageSize } = await parsePaginationParams(pageParamRaw, pageSizeParamRaw);
 
-    const limit = Number(pageSize);
-    const offset = (Number(page) - 1) * limit;
+    const limit = pageSize;
+    const offset = (page - 1) * limit;
 
     const whereClauses: string[] = [
       `(o.assigned_to = $1 OR EXISTS (

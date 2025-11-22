@@ -10,9 +10,12 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
       role,
       is_active,
       search,
-      page = 1,
-      pageSize = 20,
+      page: pageParam,
+      pageSize: pageSizeParam,
     } = req.query;
+    
+    const { parsePaginationParams } = await import('../utils/configHelpers.js');
+    const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
 
     let whereConditions: string[] = [];
     const params: any[] = [];
@@ -794,12 +797,15 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     }
 
     const existingUser = userResult.rows[0];
-    const allowedRoles: Array<'admin' | 'production_manager' | 'customer'> = [
+    const allowedRoles: Array<'admin' | 'production_manager' | 'customer' | 'customer_service' | 'follow_leader' | 'sales_leader'> = [
       'admin',
       'production_manager',
       'customer',
+      'customer_service',
+      'follow_leader',
+      'sales_leader',
     ];
-    let targetRole: 'admin' | 'production_manager' | 'customer' =
+    let targetRole: 'admin' | 'production_manager' | 'customer' | 'customer_service' | 'follow_leader' | 'sales_leader' =
       existingUser.role;
 
     const updates: string[] = [];

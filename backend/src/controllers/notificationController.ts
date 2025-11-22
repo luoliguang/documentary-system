@@ -38,7 +38,9 @@ export const getNotificationList = async (
 ) => {
   try {
     const user = req.user!;
-    const { page = 1, pageSize = 20, is_read, type } = req.query;
+    const { page: pageParam, pageSize: pageSizeParam, is_read, type } = req.query;
+    const { parsePaginationParams } = await import('../utils/configHelpers.js');
+    const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
 
     const result = await getNotifications(user.userId, {
       page: Number(page),

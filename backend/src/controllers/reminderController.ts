@@ -8,6 +8,7 @@ import {
 } from '../services/notificationService.js';
 import { getOrderDisplayNumberSimple, getOrderDisplayInfo } from '../utils/orderDisplayUtils.js';
 import { configService } from '../services/configService.js';
+import { CONFIG_KEYS } from '../constants/configKeys.js';
 import {
   canCreateReminder,
   canRespondReminder,
@@ -51,8 +52,11 @@ export const createDeliveryReminder = async (
     );
 
     if (lastReminderResult.rows.length > 0) {
-      // 获取催货间隔配置（默认2小时）
-      const intervalHours = await configService.getConfig('reminder_min_interval_hours') || 2;
+      // 获取催货间隔配置
+      const intervalHours = await configService.getConfig(CONFIG_KEYS.REMINDER_MIN_INTERVAL_HOURS);
+      if (!intervalHours || typeof intervalHours !== 'number' || intervalHours <= 0) {
+        return res.status(500).json({ error: '催货间隔配置无效，请联系管理员' });
+      }
       const lastReminderTime = new Date(lastReminderResult.rows[0].created_at);
       const now = new Date();
       const hoursSinceLastReminder = (now.getTime() - lastReminderTime.getTime()) / (1000 * 60 * 60);
@@ -187,9 +191,11 @@ export const getDeliveryReminders = async (
         is_resolved, 
         start_date,
         end_date,
-        page = 1, 
-        pageSize = 20 
+        page: pageParam, 
+        pageSize: pageSizeParam 
       } = req.query;
+      const { parsePaginationParams } = await import('../utils/configHelpers.js');
+      const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
       let whereConditions: string[] = ['dr.is_deleted = false'];
       params = [];
       let paramIndex = 1;
@@ -295,9 +301,11 @@ export const getDeliveryReminders = async (
         is_resolved,
         start_date,
         end_date,
-        page = 1, 
-        pageSize = 20 
+        page: pageParam, 
+        pageSize: pageSizeParam
       } = req.query;
+      const { parsePaginationParams } = await import('../utils/configHelpers.js');
+      const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
       let whereConditions: string[] = [`dr.is_admin_assigned = true`, `dr.is_deleted = false`];
       params = [];
       let paramIndex = 1;

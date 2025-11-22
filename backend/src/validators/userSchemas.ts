@@ -9,8 +9,8 @@ import { z } from 'zod';
 export const createUserSchema = z.object({
   username: z.string().min(1, '用户名不能为空').max(100, '用户名不能超过100个字符'),
   password: z.string().min(6, '密码至少6个字符').max(200, '密码不能超过200个字符'),
-  role: z.enum(['admin', 'customer', 'production_manager'], {
-    errorMap: () => ({ message: '角色必须是 admin、customer 或 production_manager' }),
+  role: z.enum(['admin', 'customer', 'production_manager', 'customer_service', 'follow_leader', 'sales_leader'], {
+    errorMap: () => ({ message: '角色必须是 admin、customer、production_manager、customer_service、follow_leader 或 sales_leader' }),
   }),
   customer_code: z.string().max(50, '客户编号不能超过50个字符').optional().nullable(),
   company_name: z.string().max(200, '公司名称不能超过200个字符').optional().nullable(),
@@ -27,8 +27,8 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z.object({
   username: z.string().min(1, '用户名不能为空').max(100, '用户名不能超过100个字符').optional(),
   password: z.string().min(6, '密码至少6个字符').max(200, '密码不能超过200个字符').optional(),
-  role: z.enum(['admin', 'customer', 'production_manager'], {
-    errorMap: () => ({ message: '角色必须是 admin、customer 或 production_manager' }),
+  role: z.enum(['admin', 'customer', 'production_manager', 'customer_service', 'follow_leader', 'sales_leader'], {
+    errorMap: () => ({ message: '角色必须是 admin、customer、production_manager、customer_service、follow_leader 或 sales_leader' }),
   }).optional(),
   customer_code: z.string().max(50, '客户编号不能超过50个字符').optional().nullable(),
   company_name: z.string().max(200, '公司名称不能超过200个字符').optional().nullable(),

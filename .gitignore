@@ -310,3 +310,5 @@ database/migrations/README_COMPANY_MIGRATION.md
 deploy/websocket-debug.md
 database/README_ORDER_ACTIVITIES_MIGRATION.md
 docs/CUSTOMER_CODE_EXPLANATION.md
+CURSOR_RULES.md
+CURSOR_SOUL.md
