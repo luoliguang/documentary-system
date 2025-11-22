@@ -302,3 +302,5 @@ secrets/
 .local/
 .localenv
 .envrc
+database.dbml
+REALTIME_SETUP.md

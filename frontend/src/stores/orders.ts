@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { Order, Pagination } from '../types';
 import { ordersApi } from '../api/orders';
+import { connectWebSocket } from '../utils/websocket';
 
 export const useOrdersStore = defineStore('orders', () => {
   const orders = ref<Order[]>([]);
@@ -115,6 +116,30 @@ export const useOrdersStore = defineStore('orders', () => {
     }
   };
 
+  let orderHandler: ((data: any) => void) | null = null;
+
+  // 初始化实时推送
+  const initRealtime = () => {
+    if (orderHandler) return; // 避免重复初始化
+    
+    orderHandler = (data: any) => {
+      if (data.type === 'order-updated') {
+        const { orderId, order } = data;
+        // 更新列表中的订单
+        const index = orders.value.findIndex((o) => o.id === orderId);
+        if (index !== -1) {
+          orders.value[index] = { ...orders.value[index], ...order };
+        }
+        // 更新当前查看的订单
+        if (currentOrder.value?.id === orderId) {
+          currentOrder.value = { ...currentOrder.value, ...order };
+        }
+      }
+    };
+    
+    connectWebSocket(orderHandler);
+  };
+
   return {
     orders,
     currentOrder,
@@ -125,6 +150,7 @@ export const useOrdersStore = defineStore('orders', () => {
     completeOrder,
     updateOrder,
     deleteOrder,
+    initRealtime,
   };
 });
 

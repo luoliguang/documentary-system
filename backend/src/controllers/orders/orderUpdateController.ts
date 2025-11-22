@@ -265,9 +265,15 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
     `;
     const fullOrderResult = await pool.query(fullOrderQuery, [id]);
 
+    const updatedOrder = fullOrderResult.rows[0];
+    
+    // 实时推送
+    const { emitOrderUpdated } = await import('../../websocket/emitter.js');
+    emitOrderUpdated(Number(id), updatedOrder);
+
     res.json({
       message: '订单更新成功',
-      order: fullOrderResult.rows[0],
+      order: updatedOrder,
     });
   } catch (error) {
     console.error('更新订单错误:', error);
@@ -305,9 +311,15 @@ export const completeOrder = async (req: AuthRequest, res: Response) => {
       [id, order.status, ORDER_STATUS.COMPLETED, user.userId, notes || '标记订单为已完成']
     );
 
+    const completedOrder = result.rows[0];
+    
+    // 实时推送
+    const { emitOrderUpdated } = await import('../../websocket/emitter.js');
+    emitOrderUpdated(Number(id), completedOrder);
+
     res.json({
       message: '订单已标记为完成',
-      order: result.rows[0],
+      order: completedOrder,
     });
   } catch (error) {
     console.error('完成任务错误:', error);
@@ -344,9 +356,15 @@ export const updateCustomerOrderNumber = async (
       [customer_order_number, id]
     );
 
+    const updatedOrder = result.rows[0];
+    
+    // 实时推送
+    const { emitOrderUpdated } = await import('../../websocket/emitter.js');
+    emitOrderUpdated(Number(id), updatedOrder);
+
     res.json({
       message: '客户订单编号更新成功',
-      order: result.rows[0],
+      order: updatedOrder,
     });
   } catch (error) {
     console.error('更新客户订单编号错误:', error);

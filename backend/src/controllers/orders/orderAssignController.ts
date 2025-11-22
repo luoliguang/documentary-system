@@ -176,7 +176,7 @@ export const assignOrderToProductionManager = async (
           const orderTypeText = getOrderTypeLabel(order.order_type as any) || order.order_type;
           const title = `订单分配：${order.order_number}`;
           const content = `您已被分配处理订单${order.order_number}（${orderTypeText}类型）。\n客户：${fullOrder.company_name || fullOrder.contact_name || '未知'}\n客户订单编号：${order.customer_order_number || '无'}`;
-          await createNotification({
+          const createdNotification = await createNotification({
             user_id: pmId,
             type: 'assignment',
             title,
@@ -184,6 +184,10 @@ export const assignOrderToProductionManager = async (
             related_id: orderId,
             related_type: 'order',
           });
+          
+          // 实时推送通知
+          const { emitNotificationCreated } = await import('../../websocket/emitter.js');
+          emitNotificationCreated(createdNotification);
         } catch (notificationError) {
           console.error('创建分配通知失败:', notificationError);
         }
@@ -197,6 +201,10 @@ export const assignOrderToProductionManager = async (
         console.error('标记通知为已读失败:', error);
       }
     }
+
+    // 实时推送
+    const { emitOrderUpdated } = await import('../../websocket/emitter.js');
+    emitOrderUpdated(orderId, fullOrder);
 
     res.json({
       message: current.length ? '订单分配成功' : '订单分配已取消',

@@ -1,6 +1,7 @@
 import { createApp } from './app.js';
 import { config } from './config/env.js';
 import { pool } from './config/database.js';
+import { initWebSocket } from './websocket/gateway.js';
 
 const app = createApp();
 
@@ -10,6 +11,9 @@ const PORT = config.port;
 app.listen(PORT, async () => {
   console.log(`🚀 服务器运行在端口 ${PORT}`);
   console.log(`📝 API 文档: http://localhost:${PORT}/health`);
+  
+  // 初始化WebSocket服务器
+  initWebSocket(3007);
   
   // 测试数据库连接
   try {

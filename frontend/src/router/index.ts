@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useOrdersStore } from '../stores/orders';
+import { useNotificationsStore } from '../stores/notifications';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -89,6 +91,17 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresProduction && !authStore.isProductionManager) {
     next('/');
     return;
+  }
+
+  // 如果已登录且进入需要认证的页面，初始化实时推送
+  if (authStore.isAuthenticated && to.meta.requiresAuth) {
+    const ordersStore = useOrdersStore();
+    const notificationsStore = useNotificationsStore();
+    
+    // 初始化实时推送（内部会检查是否已连接，避免重复）
+    ordersStore.initRealtime();
+    notificationsStore.initRealtime();
+    notificationsStore.startPolling(); // 保留轮询作为兜底
   }
 
   next();

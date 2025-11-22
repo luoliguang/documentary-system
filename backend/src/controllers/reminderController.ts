@@ -95,12 +95,18 @@ export const createDeliveryReminder = async (
           ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。\n催单消息：${message}`
           : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单${orderInfo.order_number}进行了${reminderTypeText}。`;
 
-        await createNotificationsForUsers(adminAndSupportUserIds, {
+        const createdNotifications = await createNotificationsForUsers(adminAndSupportUserIds, {
           type: 'reminder',
           title,
           content,
           related_id: order_id, // 使用订单ID,方便在订单列表中显示
           related_type: 'order', // 使用order类型,统一处理
+        });
+        
+        // 实时推送通知到所有管理员和客服
+        const { emitNotificationCreated } = await import('../websocket/emitter.js');
+        createdNotifications.forEach((notification: any) => {
+          emitNotificationCreated(notification);
         });
       }
     } catch (notificationError) {
@@ -477,7 +483,7 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
         ? `${responderName}（${responderRole}）已回复您的催单：\n${admin_response}`
         : `${responderName}（${responderRole}）已处理您的催单。`;
 
-      await createNotification({
+      const createdNotification = await createNotification({
         user_id: reminder.customer_id,
         type: 'reminder',
         title,
@@ -485,6 +491,10 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
         related_id: reminder.order_id,
         related_type: 'order',
       });
+      
+      // 实时推送通知
+      const { emitNotificationCreated } = await import('../websocket/emitter.js');
+      emitNotificationCreated(createdNotification);
     } catch (notificationError) {
       // 通知创建失败不影响回复操作，只记录日志
       console.error('创建回复通知失败:', notificationError);

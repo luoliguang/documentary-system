@@ -56,7 +56,9 @@ export const createOrderFollowUp = async (
       is_visible_to_customer,
     });
 
-    // 通知管理员
+    // 通知管理员和客户
+    const { emitNotificationCreated } = await import('../websocket/emitter.js');
+    
     try {
       const adminUserIds = await getAllAdminUserIds();
       if (adminUserIds.length > 0) {
@@ -64,7 +66,7 @@ export const createOrderFollowUp = async (
         const contentText = `生产跟单${user.username || '用户'}对订单${orderInfo.order_number}添加了跟进记录。\n内容：${content}`;
 
         for (const adminId of adminUserIds) {
-          await createNotification({
+          const createdNotification = await createNotification({
             user_id: adminId,
             type: 'reminder',
             title,
@@ -72,6 +74,8 @@ export const createOrderFollowUp = async (
             related_id: order_id,
             related_type: 'order',
           });
+          // 实时推送通知
+          emitNotificationCreated(createdNotification);
         }
       }
     } catch (notificationError) {
@@ -114,7 +118,7 @@ export const createOrderFollowUp = async (
         const title = `订单跟进：${orderInfo.order_number}`;
         const contentText = `您的订单${orderInfo.order_number}有了新的跟进记录。${statusInfo}\n\n跟进内容：${content}`;
 
-        await createNotification({
+        const createdNotification = await createNotification({
           user_id: orderInfo.customer_id,
           type: 'reminder',
           title,
@@ -122,6 +126,9 @@ export const createOrderFollowUp = async (
           related_id: order_id,
           related_type: 'order',
         });
+        
+        // 实时推送通知
+        emitNotificationCreated(createdNotification);
       } catch (notificationError) {
         console.error('创建客户通知失败:', notificationError);
       }

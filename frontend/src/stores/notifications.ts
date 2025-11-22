@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { notificationsApi, type Notification } from '../api/notifications';
 import { ElMessage } from 'element-plus';
+import { connectWebSocket } from '../utils/websocket';
+import { useAuthStore } from './auth';
 
 export const useNotificationsStore = defineStore('notifications', () => {
   const unreadCount = ref(0);
@@ -230,6 +232,37 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   };
 
+  let notificationHandler: ((data: any) => void) | null = null;
+
+  /**
+   * 初始化实时推送
+   */
+  const initRealtime = () => {
+    const authStore = useAuthStore();
+    const currentUserId = authStore.user?.id;
+    
+    if (!currentUserId || notificationHandler) return; // 避免重复初始化
+    
+    notificationHandler = (data: any) => {
+      if (data.type === 'notification-created') {
+        const notification = data.notification as Notification;
+        // 只处理当前用户的通知
+        if (notification.user_id === currentUserId) {
+          // 添加到通知列表顶部
+          notifications.value.unshift(notification);
+          // 更新未读数量
+          unreadCount.value++;
+          // 如果当前正在查看通知列表，自动刷新
+          if (lastFetchParams.value) {
+            fetchNotifications(lastFetchParams.value);
+          }
+        }
+      }
+    };
+    
+    connectWebSocket(notificationHandler);
+  };
+
   /**
    * 重置状态
    */
@@ -253,6 +286,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     markOrderNotificationsAsRead,
     startPolling,
     stopPolling,
+    initRealtime,
     reset,
   };
 });
