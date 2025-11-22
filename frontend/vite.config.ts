@@ -9,6 +9,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  optimizeDeps: {
+    exclude: ['@capacitor/local-notifications', '@capacitor/core']
+  },
   server: {
     port: 5176,
     proxy: {

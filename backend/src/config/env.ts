@@ -4,6 +4,7 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || '3006'),
+  wsPort: parseInt(process.env.WS_PORT || '3007'), // WebSocket端口
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

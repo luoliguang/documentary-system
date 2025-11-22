@@ -4,6 +4,7 @@ import { notificationsApi, type Notification } from '../api/notifications';
 import { ElMessage } from 'element-plus';
 import { connectWebSocket } from '../utils/websocket';
 import { useAuthStore } from './auth';
+import { isCapacitorApp, isNotificationSupported } from '../utils/device';
 
 export const useNotificationsStore = defineStore('notifications', () => {
   const unreadCount = ref(0);
@@ -267,9 +268,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
   };
 
   /**
-   * 显示桌面通知
+   * 显示通知（支持桌面和移动端）
    */
-  const showDesktopNotification = (notification: Notification) => {
+  const showDesktopNotification = async (notification: Notification) => {
     const authStore = useAuthStore();
     
     // 检查通知开关
@@ -277,8 +278,60 @@ export const useNotificationsStore = defineStore('notifications', () => {
       return;
     }
 
+    // Capacitor App：使用系统通知
+    if (isCapacitorApp()) {
+      try {
+        // 使用字符串拼接避免Vite静态分析
+        const modulePath = '@capacitor' + '/local-notifications';
+        // 动态导入Capacitor（如果已安装）
+        // @ts-ignore - Capacitor可能未安装，动态导入处理
+        const capacitorModule = await import(/* @vite-ignore */ modulePath).catch(() => null);
+        if (!capacitorModule) {
+          console.warn('Capacitor LocalNotifications未安装，使用Web通知');
+          showWebNotification(notification);
+          return;
+        }
+
+        const { LocalNotifications } = capacitorModule;
+        
+        // 检查权限
+        const permissionStatus = await LocalNotifications.checkPermissions();
+        if (permissionStatus.display !== 'granted') {
+          const requestResult = await LocalNotifications.requestPermissions();
+          if (requestResult.display !== 'granted') {
+            console.warn('用户拒绝了通知权限');
+            return;
+          }
+        }
+
+        // 显示本地通知
+        await LocalNotifications.schedule({
+          notifications: [{
+            title: notification.title,
+            body: notification.content || '',
+            id: notification.id,
+            sound: 'default',
+            badge: 1,
+          }]
+        });
+      } catch (error) {
+        console.error('显示Capacitor通知失败:', error);
+        // 如果Capacitor失败，fallback到Web通知
+        showWebNotification(notification);
+      }
+      return;
+    }
+
+    // Web通知（桌面和Android浏览器）
+    showWebNotification(notification);
+  };
+
+  /**
+   * 显示Web通知（浏览器）
+   */
+  const showWebNotification = (notification: Notification) => {
     // 检查浏览器支持
-    if (typeof Notification === 'undefined') {
+    if (!isNotificationSupported()) {
       return;
     }
 
@@ -307,7 +360,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         notificationInstance.close();
       }, 5000);
     } catch (error) {
-      console.error('显示桌面通知失败:', error);
+      console.error('显示Web通知失败:', error);
     }
   };
 

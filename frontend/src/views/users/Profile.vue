@@ -54,21 +54,57 @@
           <h4>通知设置</h4>
         </template>
         <el-form label-width="120px" style="max-width: 600px">
-          <el-form-item label="桌面通知">
+          <el-form-item label="通知提醒">
             <el-switch
               v-model="notificationEnabled"
               active-text="开启"
               inactive-text="关闭"
+              :disabled="isIOS && !isCapacitor && !notificationSupportInfo.supported"
               @change="handleNotificationToggle"
             />
             <div style="margin-top: 8px; color: #909399; font-size: 12px">
-              <p>开启后，当有新订单、催单或通知时，系统会在桌面显示提醒</p>
-              <p v-if="notificationPermission === 'denied'" style="color: #f56c6c">
-                ⚠️ 浏览器已拒绝通知权限，请在浏览器设置中允许通知权限
-              </p>
-              <p v-else-if="notificationPermission === 'default'" style="color: #e6a23c">
-                ℹ️ 首次开启时会请求浏览器通知权限
-              </p>
+              <p v-if="isCapacitor">开启后，当有新订单、催单或通知时，系统会通过App推送通知</p>
+              <p v-else-if="isMobile">开启后，当有新订单、催单或通知时，系统会显示通知提醒</p>
+              <p v-else>开启后，当有新订单、催单或通知时，系统会在桌面显示提醒</p>
+              
+              <!-- iOS Safari特殊提示 -->
+              <div v-if="isIOS && !isCapacitor" style="margin-top: 8px;">
+                <p style="color: #f56c6c; font-weight: 500;">
+                  ⚠️ iOS Safari浏览器不支持Web通知API
+                </p>
+                <p style="color: #909399; margin-top: 4px; font-size: 11px;">
+                  如需接收通知，请使用App版本（已打包为iOS App时自动使用系统通知）
+                </p>
+              </div>
+              
+              <!-- Android浏览器提示 -->
+              <div v-else-if="isAndroid && !isCapacitor" style="margin-top: 8px;">
+                <p v-if="!notificationSupportInfo.supported" style="color: #e6a23c">
+                  ⚠️ 当前Android浏览器不支持通知，建议使用App版本
+                </p>
+                <p v-else-if="notificationPermission === 'denied'" style="color: #f56c6c">
+                  ⚠️ 浏览器已拒绝通知权限，请在浏览器设置中允许通知权限
+                </p>
+                <p v-else-if="notificationPermission === 'default'" style="color: #e6a23c">
+                  ℹ️ 首次开启时会请求浏览器通知权限（需要HTTPS或localhost）
+                </p>
+                <p v-else style="color: #67c23a">
+                  ✅ 通知功能已就绪
+                </p>
+              </div>
+              
+              <!-- 桌面端提示 -->
+              <div v-else-if="!isMobile" style="margin-top: 8px;">
+                <p v-if="notificationPermission === 'denied'" style="color: #f56c6c">
+                  ⚠️ 浏览器已拒绝通知权限，请在浏览器设置中允许通知权限
+                </p>
+                <p v-else-if="notificationPermission === 'default'" style="color: #e6a23c">
+                  ℹ️ 首次开启时会请求浏览器通知权限
+                </p>
+                <p v-else style="color: #67c23a">
+                  ✅ 通知功能已就绪
+                </p>
+              </div>
             </div>
           </el-form-item>
         </el-form>
@@ -125,6 +161,14 @@ import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage, FormInstance } from 'element-plus';
 import { useAuthStore } from '../../stores/auth';
 import { profileApi } from '../../api/users';
+import { 
+  isMobileDevice, 
+  isIOSDevice, 
+  isAndroidDevice, 
+  isCapacitorApp, 
+  getNotificationPermission,
+  isNotificationSupported 
+} from '../../utils/device';
 
 const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
@@ -139,12 +183,51 @@ const form = reactive({
 // 通知开关状态
 const notificationEnabled = ref(authStore.notificationEnabled);
 
+// 设备信息
+const isMobile = computed(() => isMobileDevice());
+const isIOS = computed(() => isIOSDevice());
+const isAndroid = computed(() => isAndroidDevice());
+const isCapacitor = computed(() => isCapacitorApp());
+
 // 浏览器通知权限状态
-const notificationPermission = computed(() => {
-  if (typeof Notification === 'undefined') {
-    return 'unsupported';
+const notificationPermission = computed(() => getNotificationPermission());
+
+// 通知支持状态
+const notificationSupportInfo = computed(() => {
+  if (isCapacitor.value) {
+    return {
+      supported: true,
+      message: '已打包为App，使用系统通知',
+      needPermission: true,
+    };
   }
-  return Notification.permission;
+  
+  if (isIOS.value) {
+    return {
+      supported: false,
+      message: 'iOS Safari浏览器不支持Web通知，请使用App版本',
+      needPermission: false,
+    };
+  }
+  
+  if (isAndroid.value) {
+    return {
+      supported: isNotificationSupported(),
+      message: isNotificationSupported() 
+        ? 'Android浏览器支持通知，需要HTTPS或localhost'
+        : '当前浏览器不支持通知',
+      needPermission: isNotificationSupported(),
+    };
+  }
+  
+  // 桌面端
+  return {
+    supported: isNotificationSupported(),
+    message: isNotificationSupported() 
+      ? '桌面浏览器支持通知'
+      : '当前浏览器不支持通知',
+    needPermission: isNotificationSupported(),
+  };
 });
 
 const passwordForm = reactive({
@@ -253,17 +336,51 @@ const submitPassword = async () => {
 // 处理通知开关切换
 const handleNotificationToggle = async (enabled: boolean) => {
   try {
-    // 如果开启，先请求浏览器权限
+    // 如果是Capacitor App，直接保存（使用系统通知）
+    if (isCapacitor.value) {
+      // 保存到后端
+      await profileApi.updateProfile({
+        notification_enabled: enabled,
+      });
+      authStore.updateNotificationEnabled(enabled);
+      await authStore.fetchCurrentUser();
+      ElMessage.success(enabled ? '通知已开启' : '通知已关闭');
+      return;
+    }
+
+    // iOS Safari不支持Web通知
+    if (isIOS.value && !isCapacitor.value) {
+      if (enabled) {
+        ElMessage.warning('iOS Safari浏览器不支持Web通知，建议使用App版本');
+        // 仍然保存设置，但提示用户
+        await profileApi.updateProfile({
+          notification_enabled: enabled,
+        });
+        authStore.updateNotificationEnabled(enabled);
+        await authStore.fetchCurrentUser();
+      } else {
+        await profileApi.updateProfile({
+          notification_enabled: enabled,
+        });
+        authStore.updateNotificationEnabled(enabled);
+        await authStore.fetchCurrentUser();
+        ElMessage.success('通知已关闭');
+      }
+      return;
+    }
+
+    // Android或桌面端：检查浏览器支持
     if (enabled) {
-      if (typeof Notification === 'undefined') {
-        ElMessage.warning('您的浏览器不支持桌面通知');
+      if (!isNotificationSupported()) {
+        ElMessage.warning('您的浏览器不支持通知功能');
         return;
       }
 
+      // 请求权限
       if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          ElMessage.warning('需要通知权限才能开启桌面通知');
+          ElMessage.warning('需要通知权限才能开启通知');
           return;
         }
       } else if (Notification.permission === 'denied') {
@@ -281,7 +398,7 @@ const handleNotificationToggle = async (enabled: boolean) => {
     authStore.updateNotificationEnabled(enabled);
     await authStore.fetchCurrentUser();
 
-    ElMessage.success(enabled ? '桌面通知已开启' : '桌面通知已关闭');
+    ElMessage.success(enabled ? '通知已开启' : '通知已关闭');
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || '更新通知设置失败');
   }

@@ -12,8 +12,8 @@ app.listen(PORT, async () => {
   console.log(`🚀 服务器运行在端口 ${PORT}`);
   console.log(`📝 API 文档: http://localhost:${PORT}/health`);
   
-  // 初始化WebSocket服务器
-  initWebSocket(3007);
+  // 初始化WebSocket服务器（从环境变量读取端口）
+  initWebSocket(config.wsPort);
   
   // 测试数据库连接
   try {

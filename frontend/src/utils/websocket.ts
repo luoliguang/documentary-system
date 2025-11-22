@@ -16,7 +16,15 @@ export function connectWebSocket(onMessage: (data: any) => void) {
     return ws;
   }
 
-  const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3007/ws';
+  // 构建WebSocket URL
+  // 优先使用环境变量，否则根据当前协议和主机自动构建
+  let wsUrl = import.meta.env.VITE_WS_URL;
+  if (!wsUrl) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname;
+    const port = import.meta.env.VITE_WS_PORT || '3007';
+    wsUrl = `${protocol}//${host}:${port}/ws`;
+  }
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
