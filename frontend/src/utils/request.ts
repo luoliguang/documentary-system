@@ -58,6 +58,10 @@ api.interceptors.response.use(
         case 500:
           ElMessage.error('服务器内部错误');
           break;
+        case 400:
+          // 400错误通常是业务逻辑错误（如订单编号已存在），由组件自己处理，不在这里显示
+          // 避免重复显示错误消息
+          break;
         default:
           ElMessage.error(data?.error || data?.message || '请求失败');
       }

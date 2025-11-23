@@ -128,6 +128,30 @@
         </el-form>
       </div>
 
+      <!-- 空状态提示（客户搜索无结果时显示反馈提示） -->
+      <el-alert
+        v-if="authStore.isCustomer && ordersStore.orders.length === 0 && !ordersStore.loading && hasSearchFilters"
+        type="info"
+        :closable="false"
+        show-icon
+        class="empty-search-alert"
+      >
+        <template #title>
+          <div class="empty-search-content">
+            <span>未找到订单编号"{{ searchOrderNumber }}"</span>
+            <el-button
+              type="primary"
+              size="small"
+              @click="handleShowFeedbackDialog"
+              style="margin-left: 12px;"
+            >
+              <el-icon><QuestionFilled /></el-icon>
+              提交反馈
+            </el-button>
+          </div>
+        </template>
+      </el-alert>
+
       <!-- 桌面端：订单表格 -->
       <el-table
         v-loading="ordersStore.loading"
@@ -395,6 +419,13 @@
       @success="loadOrders"
     />
 
+    <!-- 订单编号反馈对话框 -->
+    <OrderNumberFeedbackDialog
+      v-model="feedbackDialogVisible"
+      :prefill-order-number="searchOrderNumber"
+      @success="handleFeedbackSuccess"
+    />
+
     <!-- 快速编辑对话框 -->
     <OrderEditDialog
       v-model="editDialogVisible"
@@ -498,7 +529,7 @@ import { ref, onMounted, reactive, onUnmounted, nextTick, watch, computed } from
 import { useMobileDateRange } from '../../composables/useMobileDateRange';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Picture } from '@element-plus/icons-vue';
+import { Picture, QuestionFilled } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
 import { useNotificationsStore } from '../../stores/notifications';
@@ -511,6 +542,8 @@ import OrderMobileCardList from '../../components/orders/OrderMobileCardList.vue
 import ReminderDialog from '../../components/ReminderDialog.vue';
 // @ts-ignore - Vue SFC with script setup
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
+// @ts-ignore - Vue SFC with script setup
+import OrderNumberFeedbackDialog from '../../components/OrderNumberFeedbackDialog.vue';
 import type { Order } from '../../types';
 
 const router = useRouter();
@@ -677,6 +710,7 @@ const currentEditOrder = ref<Order | null>(null);
 const assignDialogVisible = ref(false);
 const currentAssignOrder = ref<Order | null>(null);
 const productionManagers = ref<any[]>([]);
+const feedbackDialogVisible = ref(false);
 const assignForm = reactive({
   assigned_to_ids: [] as number[],
   primary_assigned_to: undefined as number | undefined,
@@ -909,6 +943,27 @@ const getOrderReminderCount = (orderId: number): number => {
 // 获取订单的分配提醒数量
 const getOrderAssignmentCount = (orderId: number): number => {
   return orderNotifications.value.get(orderId)?.assignment || 0;
+};
+
+// 计算是否有搜索条件
+const hasSearchFilters = computed(() => {
+  return !!(filters.order_number?.trim() || filters.customer_order_number?.trim());
+});
+
+// 获取当前搜索的订单编号（用于反馈提示）
+const searchOrderNumber = computed(() => {
+  return filters.customer_order_number?.trim() || filters.order_number?.trim() || '';
+});
+
+// 显示反馈对话框
+const handleShowFeedbackDialog = () => {
+  feedbackDialogVisible.value = true;
+};
+
+// 反馈提交成功后的处理
+const handleFeedbackSuccess = () => {
+  // 对话框组件内部已经显示了成功消息，这里不需要重复显示
+  // 可以在这里执行其他操作，比如刷新订单列表等
 };
 
 const resetFilters = () => {

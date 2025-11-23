@@ -4,15 +4,26 @@
       <template #header>
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h3>{{ authStore.isCustomer ? '催单记录' : '催货记录' }}</h3>
-          <el-button 
-            v-if="canUseSearch"
-            type="primary" 
-            size="small" 
-            @click="toggleSearchForm"
-          >
-            <el-icon><Search /></el-icon>
-            {{ showSearchForm ? '收起搜索' : '展开搜索' }}
-          </el-button>
+          <div style="display: flex; gap: 8px;">
+            <el-button 
+              v-if="authStore.isCustomer"
+              type="info" 
+              size="small" 
+              @click="feedbackDialogVisible = true"
+            >
+              <el-icon><QuestionFilled /></el-icon>
+              找不到订单编号？
+            </el-button>
+            <el-button 
+              v-if="canUseSearch"
+              type="primary" 
+              size="small" 
+              @click="toggleSearchForm"
+            >
+              <el-icon><Search /></el-icon>
+              {{ showSearchForm ? '收起搜索' : '展开搜索' }}
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -404,17 +415,25 @@
         <el-button type="primary" @click="submitRespond">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 订单编号反馈对话框 -->
+    <OrderNumberFeedbackDialog
+      v-model="feedbackDialogVisible"
+      @success="handleFeedbackSuccess"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Picture, Search, Refresh } from '@element-plus/icons-vue';
+import { Picture, Search, Refresh, QuestionFilled } from '@element-plus/icons-vue';
 import { useMobileDateRange } from '../../composables/useMobileDateRange';
 import { useAuthStore } from '../../stores/auth';
 import { remindersApi } from '../../api/reminders';
 import type { DeliveryReminder } from '../../types';
+// @ts-ignore - Vue SFC with script setup
+import OrderNumberFeedbackDialog from '../../components/OrderNumberFeedbackDialog.vue';
 
 const authStore = useAuthStore();
 const loading = ref(false);
@@ -425,6 +444,7 @@ const currentReminder = ref<DeliveryReminder | null>(null);
 const showSearchForm = ref(window.innerWidth > 768);
 const editMessageDialogVisible = ref(false);
 const editResponseDialogVisible = ref(false);
+const feedbackDialogVisible = ref(false);
 
 // 搜索表单
 // 使用手机端日期范围 composable
@@ -550,6 +570,10 @@ const loadReminders = async () => {
 
 const handleSearch = () => {
   loadReminders();
+};
+
+const handleFeedbackSuccess = () => {
+  // 反馈提交成功后的处理（可选：刷新列表等）
 };
 
 const handleReset = () => {

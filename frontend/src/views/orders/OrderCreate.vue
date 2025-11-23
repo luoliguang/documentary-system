@@ -276,7 +276,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { Delete, Upload, Picture, DocumentCopy, UploadFilled } from '@element-plus/icons-vue';
 import { ordersApi } from '../../api/orders';
@@ -285,6 +285,7 @@ import { useConfigOptions } from '../../composables/useConfigOptions';
 import type { ShippingTrackingNumber } from '../../types';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
@@ -620,6 +621,11 @@ const handleSubmit = async () => {
 };
 
 onMounted(() => {
+  // 如果从路由参数中获取了客户订单编号，预填到表单
+  if (route.query.customer_order_number) {
+    form.customer_order_number = route.query.customer_order_number as string;
+  }
+  
   loadCompanies();
   // 加载配置选项
   loadOrderTypes();

@@ -90,10 +90,13 @@
               <el-icon
                 :class="[
                   'notification-icon',
-                  notification.type === 'reminder' ? 'reminder-icon' : 'assignment-icon',
+                  notification.type === 'reminder' ? 'reminder-icon' : 
+                  notification.type === 'order_feedback' ? 'feedback-icon' :
+                  'assignment-icon',
                 ]"
               >
                 <Bell v-if="notification.type === 'reminder'" />
+                <QuestionFilled v-else-if="notification.type === 'order_feedback'" />
                 <User v-else />
               </el-icon>
               <span>{{ notification.title }}</span>
@@ -132,6 +135,15 @@
                 @click.stop="handleQuickAction(notification)"
               >
                 快速操作
+              </el-button>
+              <!-- 订单编号反馈通知：管理员/客服可以创建订单 -->
+              <el-button
+                v-if="notification.type === 'order_feedback' && authStore.canManageOrders"
+                type="primary"
+                size="small"
+                @click.stop="handleCreateOrderFromFeedback(notification)"
+              >
+                创建订单
               </el-button>
               <el-button
                 v-if="!notification.is_read"
@@ -193,7 +205,7 @@
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Bell, User } from '@element-plus/icons-vue';
+import { Bell, User, QuestionFilled } from '@element-plus/icons-vue';
 import { useAuthStore } from '../stores/auth';
 import { useNotificationsStore } from '../stores/notifications';
 import type { Notification } from '../types';
@@ -316,6 +328,12 @@ const handleNotificationClick = (notification: Notification) => {
   }
 
   // 根据通知类型和用户角色处理
+  if (notification.type === 'order_feedback' && authStore.canManageOrders) {
+    // 订单编号反馈通知：跳转到创建订单页面
+    handleCreateOrderFromFeedback(notification);
+    return;
+  }
+
   if (notification.related_type === 'order' && notification.related_id) {
     // 如果是分配通知且是生产跟单，打开快速操作而不是跳转
     if (notification.type === 'assignment' && authStore.isProductionManager) {
@@ -327,6 +345,10 @@ const handleNotificationClick = (notification: Notification) => {
     visible.value = false;
   } else if (notification.related_type === 'reminder' && notification.related_id) {
     router.push('/reminders');
+    visible.value = false;
+  } else if (notification.type === 'order_feedback') {
+    // 客户点击反馈通知，跳转到反馈列表
+    router.push('/order-feedbacks');
     visible.value = false;
   }
 };
@@ -556,6 +578,10 @@ const formatTime = (time: string) => {
 
 .assignment-icon {
   color: #409eff;
+}
+
+.feedback-icon {
+  color: #e6a23c;
 }
 
 .notification-content {

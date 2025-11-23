@@ -116,6 +116,13 @@
             <el-icon><Tools /></el-icon>
             <span>系统配置</span>
           </el-menu-item>
+          <el-menu-item
+            v-if="authStore.canManageOrders || authStore.isCustomer"
+            index="/order-feedbacks"
+          >
+            <el-icon><QuestionFilled /></el-icon>
+            <span>{{ authStore.isCustomer ? '我的反馈' : '订单编号反馈' }}</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
 
@@ -183,6 +190,13 @@
             <el-icon><Tools /></el-icon>
             <span>系统配置</span>
           </el-menu-item>
+          <el-menu-item
+            v-if="authStore.canManageOrders || authStore.isCustomer"
+            index="/order-feedbacks"
+          >
+            <el-icon><QuestionFilled /></el-icon>
+            <span>{{ authStore.isCustomer ? '我的反馈' : '订单编号反馈' }}</span>
+          </el-menu-item>
         </el-menu>
       </el-drawer>
 
@@ -247,7 +261,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Bell, User, List, Plus } from '@element-plus/icons-vue';
+import { Bell, User, List, Plus, QuestionFilled } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useNotificationsStore } from '../../stores/notifications';
 // @ts-ignore - Vue SFC with script setup

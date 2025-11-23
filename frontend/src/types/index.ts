@@ -150,11 +150,11 @@ export interface LoginResponse {
 export interface Notification {
   id: number;
   user_id: number;
-  type: 'reminder' | 'assignment';
+  type: 'reminder' | 'assignment' | 'order_feedback';
   title: string;
   content: string | null;
   related_id: number | null;
-  related_type: 'order' | 'reminder' | null;
+  related_type: 'order' | 'reminder' | 'order_feedback' | null;
   is_read: boolean;
   created_at: string;
   read_at: string | null;

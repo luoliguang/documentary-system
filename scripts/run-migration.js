@@ -1,25 +1,48 @@
 /**
- * 数据库迁移执行脚本
+ * 统一数据库迁移执行脚本
+ * 自动查找并执行所有未执行的迁移文件
  * 使用方法：node scripts/run-migration.js
  */
 
-const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
 
-// 从环境变量或默认值获取数据库配置
+// 添加 backend 的 node_modules 到模块搜索路径
+const backendNodeModules = path.resolve(__dirname, '../backend/node_modules');
+const originalPaths = module.paths.slice();
+module.paths = [backendNodeModules, ...originalPaths];
+
+// 加载 dotenv（从 backend 目录）
+const dotenvPath = path.join(__dirname, '../backend/.env');
+if (fs.existsSync(dotenvPath)) {
+  const dotenvModule = path.join(backendNodeModules, 'dotenv');
+  if (fs.existsSync(dotenvModule)) {
+    require(dotenvModule).config({ path: dotenvPath });
+  } else {
+    require('dotenv').config({ path: dotenvPath });
+  }
+} else {
+  const rootDotenv = path.join(__dirname, '../.env');
+  if (fs.existsSync(rootDotenv)) {
+    require('dotenv').config({ path: rootDotenv });
+  } else {
+    require('dotenv').config();
+  }
+}
+
+// 现在可以安全地 require pg
+const { Pool } = require('pg');
+
 const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'fangdu_db',
-  password: process.env.DB_PASSWORD || 'postgres',
   port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'fangdu_db',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
 });
 
-async function runMigration() {
+async function runMigrations() {
   const client = await pool.connect();
-  
   try {
     console.log('📦 开始执行数据库迁移...');
     console.log(`📊 数据库: ${pool.options.database}`);
@@ -27,82 +50,85 @@ async function runMigration() {
     console.log(`🌐 主机: ${pool.options.host}:${pool.options.port}`);
     console.log('');
 
-    // 读取迁移脚本
-    const migrationPath = path.join(
-      __dirname,
-      '../database/migrations/001_add_production_manager_features.sql'
+    // 创建迁移记录表（如果不存在）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS migration_history (
+        id SERIAL PRIMARY KEY,
+        migration_file VARCHAR(255) NOT NULL UNIQUE,
+        executed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 获取已执行的迁移文件列表
+    const executedResult = await client.query(
+      'SELECT migration_file FROM migration_history ORDER BY id'
     );
-    
-    if (!fs.existsSync(migrationPath)) {
-      throw new Error(`迁移脚本不存在: ${migrationPath}`);
+    const executedFiles = new Set(executedResult.rows.map(row => row.migration_file));
+
+    // 查找所有迁移文件（格式：数字_描述.sql）
+    const migrationsDir = path.join(__dirname, '../database/migrations');
+    const allFiles = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql') && /^\d+_/.test(file))
+      .map(file => ({
+        name: file,
+        number: parseInt(file.match(/^(\d+)_/)[1]),
+        path: path.join(migrationsDir, file)
+      }))
+      .sort((a, b) => a.number - b.number);
+
+    // 过滤出未执行的迁移
+    const pendingMigrations = allFiles.filter(file => !executedFiles.has(file.name));
+
+    if (pendingMigrations.length === 0) {
+      console.log('✅ 所有迁移已执行，无需执行新的迁移');
+      return;
     }
 
-    const sql = fs.readFileSync(migrationPath, 'utf8');
-    
-    // 开始事务
-    await client.query('BEGIN');
-    console.log('🔄 开始事务...');
-    
-    // 执行迁移脚本
-    await client.query(sql);
-    
-    // 提交事务
-    await client.query('COMMIT');
-    console.log('✅ 事务已提交');
-    
-    // 验证迁移结果
+    console.log(`📋 找到 ${pendingMigrations.length} 个待执行的迁移文件:`);
+    pendingMigrations.forEach((file, index) => {
+      console.log(`   ${index + 1}. ${file.name}`);
+    });
     console.log('');
-    console.log('🔍 验证迁移结果...');
-    
-    const checks = [
-      {
-        name: 'users.assigned_order_types',
-        query: `SELECT column_name FROM information_schema.columns 
-                   WHERE table_name = 'users' AND column_name = 'assigned_order_types'`,
-      },
-      {
-        name: 'orders.order_type',
-        query: `SELECT column_name FROM information_schema.columns 
-                   WHERE table_name = 'orders' AND column_name = 'order_type'`,
-      },
-      {
-        name: 'delivery_reminders.is_admin_assigned',
-        query: `SELECT column_name FROM information_schema.columns 
-                   WHERE table_name = 'delivery_reminders' AND column_name = 'is_admin_assigned'`,
-      },
-      {
-        name: 'delivery_reminders.assigned_to',
-        query: `SELECT column_name FROM information_schema.columns 
-                   WHERE table_name = 'delivery_reminders' AND column_name = 'assigned_to'`,
-      },
-    ];
 
-    let allPassed = true;
-    for (const check of checks) {
-      const result = await client.query(check.query);
-      if (result.rows.length > 0) {
-        console.log(`  ✅ ${check.name} - 字段已创建`);
-      } else {
-        console.log(`  ❌ ${check.name} - 字段未找到`);
-        allPassed = false;
+    // 执行所有待执行的迁移
+    for (let i = 0; i < pendingMigrations.length; i++) {
+      const migration = pendingMigrations[i];
+      console.log(`🔄 [${i + 1}/${pendingMigrations.length}] 执行迁移: ${migration.name}...`);
+
+      try {
+        await client.query('BEGIN');
+        const sql = fs.readFileSync(migration.path, 'utf8');
+        await client.query(sql);
+        
+        // 记录迁移执行历史
+        await client.query(
+          'INSERT INTO migration_history (migration_file) VALUES ($1)',
+          [migration.name]
+        );
+        
+        await client.query('COMMIT');
+        console.log(`   ✅ ${migration.name} 执行成功`);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`   ❌ ${migration.name} 执行失败`);
+        throw error;
       }
     }
 
     console.log('');
-    if (allPassed) {
-      console.log('🎉 迁移执行成功！所有字段已创建。');
-    } else {
-      console.log('⚠️  迁移完成，但部分验证失败，请手动检查。');
-    }
-    
+    console.log('🎉 所有迁移执行成功！');
+
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('');
-    console.error('❌ 迁移执行失败！');
+    console.error('❌ 数据库迁移执行失败！');
     console.error('错误信息:', error.message);
+    if (error.code) {
+      console.error('错误代码:', error.code);
+    }
+    if (error.detail) {
+      console.error('详细信息:', error.detail);
+    }
     console.error('');
-    console.error('详细错误:');
-    console.error(error);
     process.exit(1);
   } finally {
     client.release();
@@ -110,9 +136,4 @@ async function runMigration() {
   }
 }
 
-// 执行迁移
-runMigration().catch((error) => {
-  console.error('未处理的错误:', error);
-  process.exit(1);
-});
-
+runMigrations();

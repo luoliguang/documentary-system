@@ -61,6 +61,12 @@ const router = createRouter({
           component: () => import('../views/configs/ConfigManagement.vue'),
           meta: { requiresAdmin: true },
         },
+        {
+          path: 'order-feedbacks',
+          name: 'OrderFeedbackList',
+          component: () => import('../views/orderFeedbacks/OrderFeedbackList.vue'),
+          meta: { requiresAuth: true }, // 客户和管理员/客服都可以访问
+        },
       ],
     },
   ],

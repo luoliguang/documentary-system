@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "migration:generate": "typeorm migration:generate src/migration/FullSnapshot -d src/data-source.ts",
-    "migration:run": "typeorm migration:run -d src/data-source.ts",
+    "migration:run": "tsx node_modules/typeorm/cli.js migration:run -d src/data-source.ts",
     "migration:run:fake": "typeorm migration:run --fake -d src/data-source.ts",
     "test": "jest",
     "test:critical": "jest --runInBand __tests__/functional",

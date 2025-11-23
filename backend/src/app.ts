@@ -9,6 +9,7 @@ import userRoutes from './routes/userRoutes.js';
 import configRoutes from './routes/configRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import followUpRoutes from './routes/followUpRoutes.js';
+import orderNumberFeedbackRoutes from './routes/orderNumberFeedbackRoutes.js';
 import { errorHandler, notFoundHandler } from './errors/errorHandler.js';
 
 export function createApp() {
@@ -37,6 +38,7 @@ export function createApp() {
   app.use('/api/configs', configRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/follow-ups', followUpRoutes);
+  app.use('/api/order-feedbacks', orderNumberFeedbackRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
