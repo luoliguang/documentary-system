@@ -119,6 +119,7 @@
             value-format="YYYY-MM-DD HH:mm:ss"
             format="YYYY-MM-DD HH:mm"
             :disabled-date="disabledFutureDate"
+            popper-class="mobile-datetime-picker-popper"
           />
           <div style="font-size: 12px; color: #909399; margin-top: 4px">
             提示：下单时间不能晚于当前时间
@@ -133,6 +134,7 @@
             style="width: 100%"
             value-format="YYYY-MM-DD HH:mm:ss"
             format="YYYY-MM-DD HH:mm"
+            popper-class="mobile-datetime-picker-popper"
           />
         </el-form-item>
 
@@ -155,8 +157,8 @@
         </el-form-item>
         
         <el-form-item label="订单图片">
-          <!-- 粘贴提示区域 - 始终显示 -->
-          <div class="paste-hint-box">
+          <!-- 粘贴提示区域 - 仅在桌面端显示 -->
+          <div v-if="!isMobile" class="paste-hint-box">
             <div class="paste-hint-content">
               <el-icon class="paste-icon"><DocumentCopy /></el-icon>
               <div class="paste-hint-text">
@@ -170,12 +172,12 @@
             ref="uploadAreaRef"
             style="width: 100%"
             class="image-upload-area"
-            tabindex="0"
-            @paste="handlePaste"
-            @dragover.prevent
-            @drop.prevent="handleDrop"
-            @focus="handleFocus"
-            @blur="handleBlur"
+            :tabindex="isMobile ? -1 : 0"
+            @paste="handlePasteIfNotMobile"
+            @dragover.prevent="handleDragOverIfNotMobile"
+            @drop.prevent="handleDropIfNotMobile"
+            @focus="handleFocusIfNotMobile"
+            @blur="handleBlurIfNotMobile"
           >
             <div v-if="form.images && form.images.length > 0" class="image-list">
               <div v-for="(image, index) in form.images" :key="index" class="image-item">
@@ -212,7 +214,7 @@
                   <el-icon><Picture /></el-icon>
                   <span>支持 JPG、PNG 格式，单张图片不超过 5MB</span>
                 </div>
-                <div class="tip-item">
+                <div v-if="!isMobile" class="tip-item">
                   <el-icon><UploadFilled /></el-icon>
                   <span>或直接拖拽图片文件到此处</span>
                 </div>
@@ -290,9 +292,15 @@ const companies = ref<any[]>([]);
 const companyCustomers = ref<any[]>([]);
 const uploadAreaRef = ref<HTMLElement | null>(null);
 const isUploadAreaFocused = ref(false);
+const isMobile = ref(false);
 
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
+
+// 检测移动端
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
 
 // 获取当前时间并格式化为 YYYY-MM-DD HH:mm:ss
 const getCurrentDateTime = () => {
@@ -448,6 +456,37 @@ const handleBlur = () => {
   isUploadAreaFocused.value = false;
 };
 
+// 移动端禁用粘贴和拖拽事件
+const handlePasteIfNotMobile = (e: ClipboardEvent) => {
+  if (!isMobile.value) {
+    handlePaste(e);
+  }
+};
+
+const handleDragOverIfNotMobile = (e: DragEvent) => {
+  if (!isMobile.value) {
+    e.preventDefault();
+  }
+};
+
+const handleDropIfNotMobile = (e: DragEvent) => {
+  if (!isMobile.value) {
+    handleDrop(e);
+  }
+};
+
+const handleFocusIfNotMobile = () => {
+  if (!isMobile.value) {
+    handleFocus();
+  }
+};
+
+const handleBlurIfNotMobile = () => {
+  if (!isMobile.value) {
+    handleBlur();
+  }
+};
+
 const handlePaste = async (event: ClipboardEvent) => {
   // 如果焦点在输入框或文本域，不处理粘贴（让浏览器正常处理文本粘贴）
   const activeElement = document.activeElement;
@@ -585,17 +624,27 @@ onMounted(() => {
   // 加载配置选项
   loadOrderTypes();
   loadOrderStatuses();
-  // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）
-  const pasteHandler = (e: Event) => {
-    handlePaste(e as ClipboardEvent);
-  };
-  window.addEventListener('paste', pasteHandler, true);
   
-  // 保存处理器引用以便卸载时移除
-  (window as any).__pasteHandler = pasteHandler;
+  // 检测移动端
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  
+  // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）- 仅在桌面端
+  if (!isMobile.value) {
+    const pasteHandler = (e: Event) => {
+      handlePaste(e as ClipboardEvent);
+    };
+    window.addEventListener('paste', pasteHandler, true);
+    
+    // 保存处理器引用以便卸载时移除
+    (window as any).__pasteHandler = pasteHandler;
+  }
 });
 
 onUnmounted(() => {
+  // 移除事件监听
+  window.removeEventListener('resize', checkMobile);
+  
   // 移除全局粘贴事件监听
   const pasteHandler = (window as any).__pasteHandler;
   if (pasteHandler) {

@@ -73,15 +73,39 @@
               </el-select>
             </el-form-item>
             <el-form-item label="创建时间">
+              <!-- 桌面端：使用日期范围选择器 -->
               <el-date-picker
-                v-model="searchForm.dateRange"
+                v-if="!createDateRange.isMobile.value"
+                v-model="createDateRange.dateRange.value"
                 type="daterange"
                 range-separator="至"
                 start-placeholder="开始日期"
                 end-placeholder="结束日期"
                 value-format="YYYY-MM-DD"
                 style="width: 240px"
+                popper-class="mobile-date-picker-popper"
               />
+              <!-- 手机端：使用两个独立的日期选择器 -->
+              <div v-else class="mobile-date-range">
+                <el-date-picker
+                  v-model="createDateRange.dateStart.value"
+                  type="date"
+                  placeholder="开始日期"
+                  value-format="YYYY-MM-DD"
+                  class="mobile-date-picker"
+                  popper-class="mobile-date-picker-popper"
+                  style="width: 100%; margin-bottom: 8px;"
+                />
+                <el-date-picker
+                  v-model="createDateRange.dateEnd.value"
+                  type="date"
+                  placeholder="结束日期"
+                  value-format="YYYY-MM-DD"
+                  class="mobile-date-picker"
+                  popper-class="mobile-date-picker-popper"
+                  style="width: 100%;"
+                />
+              </div>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="handleSearch">
@@ -387,6 +411,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture, Search, Refresh } from '@element-plus/icons-vue';
+import { useMobileDateRange } from '../../composables/useMobileDateRange';
 import { useAuthStore } from '../../stores/auth';
 import { remindersApi } from '../../api/reminders';
 import type { DeliveryReminder } from '../../types';
@@ -402,14 +427,36 @@ const editMessageDialogVisible = ref(false);
 const editResponseDialogVisible = ref(false);
 
 // 搜索表单
+// 使用手机端日期范围 composable
+const createDateRange = useMobileDateRange();
+
 const searchForm = ref({
   order_number: '',
   customer_order_number: '',
   company_name: '',
   reminder_type: undefined as 'normal' | 'urgent' | undefined,
   is_resolved: undefined as boolean | undefined,
-  dateRange: [] as string[],
+  dateRange: [] as string[], // 保留用于兼容
 });
+
+// 同步 composable 的数据到 searchForm（用于兼容）
+watch(
+  () => createDateRange.dateRange.value,
+  (range) => {
+    searchForm.value.dateRange = range;
+  },
+  { immediate: true }
+);
+
+// 反向同步：从 searchForm 同步到 composable
+watch(
+  () => searchForm.value.dateRange,
+  (range) => {
+    if (JSON.stringify(range) !== JSON.stringify(createDateRange.dateRange.value)) {
+      createDateRange.dateRange.value = range;
+    }
+  }
+);
 
 // 移动端检测
 const isMobile = ref(window.innerWidth <= 768);
@@ -480,9 +527,16 @@ const loadReminders = async () => {
     if (searchForm.value.is_resolved !== undefined) {
       params.is_resolved = searchForm.value.is_resolved;
     }
-    if (searchForm.value.dateRange && searchForm.value.dateRange.length === 2) {
-      params.start_date = searchForm.value.dateRange[0];
-      params.end_date = searchForm.value.dateRange[1];
+    // 使用 composable 构建日期查询参数
+    const { start, end } = createDateRange.buildQueryParams({
+      startTime: '00:00:00',
+      endTime: '23:59:59',
+    });
+    if (start) {
+      params.start_date = start.split(' ')[0]; // 只取日期部分
+    }
+    if (end) {
+      params.end_date = end.split(' ')[0]; // 只取日期部分
     }
 
     const response = await remindersApi.getDeliveryReminders(params);
@@ -507,6 +561,7 @@ const handleReset = () => {
     is_resolved: undefined,
     dateRange: [],
   };
+  createDateRange.reset();
   loadReminders();
 };
 
@@ -877,6 +932,17 @@ onUnmounted(() => {
   .search-form .el-input,
   .search-form .el-select,
   .search-form .el-date-picker {
+    width: 100% !important;
+  }
+
+  .mobile-date-range {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .mobile-date-picker {
     width: 100% !important;
   }
 }

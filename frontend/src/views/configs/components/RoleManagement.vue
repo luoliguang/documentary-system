@@ -15,7 +15,15 @@
       </el-button>
     </div>
 
-    <el-table v-loading="tableLoading" :data="roles" stripe style="width: 100%">
+    <!-- 桌面端：表格 -->
+    <el-table
+      v-if="!isMobile"
+      v-loading="tableLoading"
+      :data="roles"
+      stripe
+      style="width: 100%"
+      class="desktop-table"
+    >
       <el-table-column prop="value" label="角色值" width="150" />
       <el-table-column prop="label" label="角色名称" width="200" />
       <el-table-column label="操作" width="200" fixed="right">
@@ -30,15 +38,43 @@
       </el-table-column>
     </el-table>
 
+    <!-- 手机端：卡片列表 -->
+    <div v-else v-loading="tableLoading" class="mobile-role-list">
+      <transition-group name="role-card" tag="div">
+        <el-card
+          v-for="role in roles"
+          :key="role.value"
+          class="role-card"
+          shadow="hover"
+        >
+          <div class="role-card-header">
+            <div class="role-info">
+              <div class="role-label">{{ role.label }}</div>
+              <div class="role-value">{{ role.value }}</div>
+            </div>
+          </div>
+          <div class="role-card-actions">
+            <el-button type="primary" size="small" @click="handleEdit(role)">
+              编辑
+            </el-button>
+            <el-button type="danger" size="small" @click="handleDelete(role)">
+              删除
+            </el-button>
+          </div>
+        </el-card>
+      </transition-group>
+    </div>
+
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      width="800px"
+      :width="dialogWidth"
+      class="role-edit-dialog"
     >
       <el-tabs v-model="activeTab">
         <el-tab-pane label="基本信息" name="basic">
-          <el-form :model="form" label-width="100px">
+          <el-form :model="form" :label-width="labelWidth">
             <el-form-item label="角色值" required>
               <el-input v-model="form.value" placeholder="如：admin" :disabled="isEdit" />
             </el-form-item>
@@ -54,13 +90,13 @@
               <div class="permissions-list">
                 <template
                   v-for="(_value, permission) in resourcePerms"
-                  :key="permission"
+                  :key="String(permission)"
                 >
                   <el-checkbox
-                    v-if="permission !== 'allowed_order_types'"
-                    :model-value="rolePermissions[resource][permission]"
+                    v-if="String(permission) !== 'allowed_order_types'"
+                    :model-value="rolePermissions[resource][String(permission)]"
                     @update:model-value="(val: boolean) => {
-                      rolePermissions[resource][permission] = val;
+                      rolePermissions[resource][String(permission)] = val;
                     }"
                     :label="getPermissionLabel(String(permission))"
                   />
@@ -104,6 +140,10 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useConfigOptions } from '../../../composables/useConfigOptions';
 import { useConfigStore } from '../../../stores/config';
+
+const isMobile = computed(() => window.innerWidth <= 768);
+const dialogWidth = computed(() => (isMobile.value ? '95%' : '800px'));
+const labelWidth = computed(() => (isMobile.value ? '80px' : '100px'));
 
 interface Role {
   value: string;
@@ -532,6 +572,129 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
   line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .role-management {
+    padding: 10px 0;
+  }
+
+  .header-actions {
+    margin-bottom: 15px;
+  }
+
+  .header-actions .el-button {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  /* 表格转卡片 */
+  .role-management :deep(.el-table) {
+    display: none;
+  }
+
+  .mobile-role-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .role-card {
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .role-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e9f2;
+  }
+
+  .role-value {
+    font-size: 14px;
+    color: #909399;
+  }
+
+  .role-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2d3d;
+  }
+
+  .role-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .role-card-actions .el-button {
+    flex: 1;
+    min-height: 36px;
+  }
+
+  /* 对话框优化 */
+  .role-edit-dialog :deep(.el-dialog) {
+    margin: 5vh auto !important;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .role-edit-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .role-edit-dialog :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+
+  .role-edit-dialog :deep(.el-form-item__label) {
+    font-size: 13px;
+  }
+
+  .permissions-content {
+    padding: 5px 0;
+  }
+
+  .resource-section {
+    margin-bottom: 15px;
+  }
+
+  .resource-section h5 {
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+
+  .permissions-list {
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .order-types-section {
+    margin-top: 15px;
+    padding: 12px;
+  }
+
+  .order-types-checkbox-group {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .role-edit-dialog :deep(.el-dialog) {
+    margin: 2vh auto !important;
+    max-height: 96vh;
+  }
+
+  .role-edit-dialog :deep(.el-dialog__body) {
+    padding: 12px;
+  }
 }
 </style>
 

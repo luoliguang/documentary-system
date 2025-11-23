@@ -48,8 +48,15 @@
         </el-form>
       </div>
 
-      <!-- 用户表格 -->
-      <el-table v-loading="loading" :data="users" stripe style="width: 100%">
+      <!-- 桌面端：用户表格 -->
+      <el-table
+        v-if="!isMobile"
+        v-loading="loading"
+        :data="users"
+        stripe
+        style="width: 100%"
+        class="desktop-table"
+      >
         <el-table-column prop="account" label="账号" width="150">
           <template #default="{ row }">
             <span>{{ row.account || row.username || '-' }}</span>
@@ -136,6 +143,101 @@
         </el-table-column>
       </el-table>
 
+      <!-- 手机端：用户卡片列表 -->
+      <div v-else v-loading="loading" class="mobile-user-list">
+        <transition-group name="user-card" tag="div">
+          <el-card
+            v-for="user in users"
+            :key="user.id"
+            class="user-card"
+            shadow="hover"
+          >
+            <div class="user-card-header">
+              <div class="user-info">
+                <div class="user-name-row">
+                  <span class="user-account">{{ user.account || user.username || '-' }}</span>
+                  <el-tag
+                    :type="
+                      user.role === 'admin'
+                        ? 'danger'
+                        : user.role === 'production_manager'
+                        ? 'warning'
+                        : user.role === 'customer_service'
+                        ? 'success'
+                        : 'info'
+                    "
+                    size="small"
+                  >
+                    {{
+                      user.role === 'admin'
+                        ? '管理员'
+                        : user.role === 'production_manager'
+                        ? '生产跟单'
+                        : user.role === 'customer_service'
+                        ? '客服'
+                        : '客户'
+                    }}
+                  </el-tag>
+                  <el-tag :type="user.is_active ? 'success' : 'danger'" size="small">
+                    {{ user.is_active ? '启用' : '禁用' }}
+                  </el-tag>
+                </div>
+                <div v-if="user.username && user.username !== (user.account || '')" class="user-username">
+                  {{ user.username }}
+                </div>
+              </div>
+            </div>
+
+            <div class="user-card-body">
+              <div v-if="user.company_name" class="user-field">
+                <span class="field-label">公司：</span>
+                <span class="field-value">{{ user.company_name }}</span>
+              </div>
+              <div v-if="user.contact_name" class="user-field">
+                <span class="field-label">联系人：</span>
+                <span class="field-value">{{ user.contact_name }}</span>
+              </div>
+              <div v-if="user.customer_code" class="user-field">
+                <span class="field-label">客户编号：</span>
+                <span class="field-value">{{ user.customer_code }}</span>
+              </div>
+              <div v-if="user.admin_notes" class="user-field">
+                <span class="field-label">备注：</span>
+                <span class="field-value notes">{{ user.admin_notes }}</span>
+              </div>
+              <div class="user-field">
+                <span class="field-label">创建时间：</span>
+                <span class="field-value">{{ formatDate(user.created_at) }}</span>
+              </div>
+            </div>
+
+            <div class="user-card-actions">
+              <el-button type="primary" size="small" @click="handleEdit(user)">
+                编辑
+              </el-button>
+              <el-button type="warning" size="small" @click="handleResetPassword(user)">
+                重置密码
+              </el-button>
+              <el-button
+                :type="user.is_active ? 'danger' : 'success'"
+                size="small"
+                @click="handleToggleStatus(user)"
+              >
+                {{ user.is_active ? '禁用' : '启用' }}
+              </el-button>
+              <el-button
+                v-if="user.id !== authStore.user?.id"
+                type="danger"
+                size="small"
+                @click="handleDelete(user)"
+              >
+                删除
+              </el-button>
+            </div>
+          </el-card>
+        </transition-group>
+      </div>
+
       <!-- 分页 -->
       <div class="pagination">
         <el-pagination
@@ -154,13 +256,16 @@
     <el-dialog
       v-model="dialogVisible"
       :title="currentUser ? '编辑用户' : '创建用户'"
-      :width="isMobile ? '90%' : '600px'"
+      :width="dialogWidth"
+      class="user-edit-dialog"
+      @update:model-value="(val: boolean) => { dialogVisible = val; }"
     >
       <el-form
         ref="formRef"
         :model="form"
         :rules="rules"
-        label-width="120px"
+        :label-width="labelWidth"
+        class="user-edit-form"
       >
         <el-form-item label="账号" prop="account">
           <el-input
@@ -249,8 +354,18 @@
     </el-dialog>
 
     <!-- 重置密码对话框 -->
-    <el-dialog v-model="passwordDialogVisible" title="重置密码" width="400px">
-      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="100px">
+    <el-dialog
+      v-model="passwordDialogVisible"
+      title="重置密码"
+      :width="dialogWidth"
+      class="password-reset-dialog"
+    >
+      <el-form
+        ref="passwordFormRef"
+        :model="passwordForm"
+        :rules="passwordRules"
+        :label-width="labelWidth"
+      >
         <el-form-item label="新密码" prop="new_password">
           <el-input
             v-model="passwordForm.new_password"
@@ -299,6 +414,27 @@ const pagination = ref({
 const { roles, orderTypes, loadRoles, loadOrderTypes } = useConfigOptions();
 
 const isMobile = ref(window.innerWidth <= 768);
+const dialogWidth = ref('600px');
+const labelWidth = ref('120px');
+
+const updateLayout = () => {
+  const width = window.innerWidth;
+  if (width <= 480) {
+    dialogWidth.value = '95%';
+    labelWidth.value = '80px';
+    isMobile.value = true;
+  } else if (width <= 768) {
+    dialogWidth.value = '95%';
+    labelWidth.value = '100px';
+    isMobile.value = true;
+  } else {
+    dialogWidth.value = '600px';
+    labelWidth.value = '120px';
+    isMobile.value = false;
+  }
+};
+
+window.addEventListener('resize', updateLayout);
 
 const filters = reactive({
   role: '',
@@ -608,6 +744,7 @@ const handlePageChange = () => {
 };
 
 onMounted(() => {
+  updateLayout();
   loadUsers();
   loadRoles();
   loadOrderTypes();
@@ -655,11 +792,173 @@ onMounted(() => {
   line-height: 1.4;
 }
 
+/* 桌面端表格显示 */
+.desktop-table {
+  display: block;
+}
+
+/* 手机端隐藏表格 */
 @media (max-width: 768px) {
+  .desktop-table {
+    display: none;
+  }
+
   .filter-input,
   .filter-select {
     width: 100%;
   }
+
+  .mobile-user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .user-card {
+    border-radius: 8px;
+  }
+
+  .user-card-header {
+    margin-bottom: 12px;
+  }
+
+  .user-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .user-account {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2d3d;
+  }
+
+  .user-username {
+    font-size: 13px;
+    color: #909399;
+    margin-top: 4px;
+  }
+
+  .user-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed #e5e9f2;
+  }
+
+  .user-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .field-label {
+    color: #909399;
+    min-width: 70px;
+    flex-shrink: 0;
+  }
+
+  .field-value {
+    color: #303133;
+    flex: 1;
+    word-break: break-word;
+  }
+
+  .field-value.notes {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .user-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .user-card-actions .el-button {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  /* 对话框优化 */
+  .user-edit-dialog :deep(.el-dialog),
+  .password-reset-dialog :deep(.el-dialog) {
+    margin: 5vh auto !important;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .user-edit-dialog :deep(.el-dialog__body),
+  .password-reset-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-edit-form :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+
+  .user-edit-form :deep(.el-form-item__label) {
+    font-size: 13px;
+    line-height: 1.5;
+    padding-bottom: 4px;
+  }
+
+  .user-edit-form :deep(.el-input),
+  .user-edit-form :deep(.el-select),
+  .user-edit-form :deep(.el-checkbox-group) {
+    width: 100% !important;
+  }
+
+  .form-tip {
+    font-size: 11px;
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .user-card-actions .el-button {
+    /* min-width: 48%; */
+    min-height: 40px;
+    font-size: 12px;
+  }
+
+  .user-edit-dialog :deep(.el-dialog),
+  .password-reset-dialog :deep(.el-dialog) {
+    margin: 2vh auto !important;
+    max-height: 96vh;
+  }
+
+  .user-edit-dialog :deep(.el-dialog__body),
+  .password-reset-dialog :deep(.el-dialog__body) {
+    padding: 12px;
+  }
+}
+
+/* 过渡动画 */
+.user-card-enter-active,
+.user-card-leave-active {
+  transition: all 0.25s ease;
+}
+
+.user-card-enter-from,
+.user-card-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>
 

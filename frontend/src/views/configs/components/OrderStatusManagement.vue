@@ -7,7 +7,15 @@
       </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="orderStatuses" stripe style="width: 100%">
+    <!-- 桌面端：表格 -->
+    <el-table
+      v-if="!isMobile"
+      v-loading="loading"
+      :data="orderStatuses"
+      stripe
+      style="width: 100%"
+      class="desktop-table"
+    >
       <el-table-column prop="value" label="状态值" width="150" />
       <el-table-column prop="label" label="状态名称" width="200" />
       <el-table-column label="操作" width="200" fixed="right">
@@ -22,13 +30,41 @@
       </el-table-column>
     </el-table>
 
+    <!-- 手机端：卡片列表 -->
+    <div v-else v-loading="loading" class="mobile-status-list">
+      <transition-group name="status-card" tag="div">
+        <el-card
+          v-for="status in orderStatuses"
+          :key="status.value"
+          class="status-card"
+          shadow="hover"
+        >
+          <div class="status-card-header">
+            <div class="status-info">
+              <div class="status-label">{{ status.label }}</div>
+              <div class="status-value">{{ status.value }}</div>
+            </div>
+          </div>
+          <div class="status-card-actions">
+            <el-button type="primary" size="small" @click="handleEdit(status)">
+              编辑
+            </el-button>
+            <el-button type="danger" size="small" @click="handleDelete(status)">
+              删除
+            </el-button>
+          </div>
+        </el-card>
+      </transition-group>
+    </div>
+
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      width="500px"
+      :width="dialogWidth"
+      class="status-edit-dialog"
     >
-      <el-form :model="form" label-width="100px">
+      <el-form :model="form" :label-width="labelWidth">
         <el-form-item label="状态值" required>
           <el-input v-model="form.value" placeholder="如：pending" :disabled="isEdit" />
         </el-form-item>
@@ -50,6 +86,10 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useConfigStore } from '../../../stores/config';
 import { invalidateOrderStatusOptionsCache, setOrderStatusOptionsCache } from '../../../composables/useConfigOptions';
+
+const isMobile = computed(() => window.innerWidth <= 768);
+const dialogWidth = computed(() => (isMobile.value ? '95%' : '500px'));
+const labelWidth = computed(() => (isMobile.value ? '80px' : '100px'));
 
 interface OrderStatus {
   value: string;
@@ -165,6 +205,113 @@ onMounted(() => {
 
 .header-actions {
   margin-bottom: 20px;
+}
+
+/* 桌面端表格显示 */
+.desktop-table {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .desktop-table {
+    display: none;
+  }
+
+  .order-status-management {
+    padding: 10px 0;
+  }
+
+  .header-actions {
+    margin-bottom: 15px;
+  }
+
+  .header-actions .el-button {
+    width: 100%;
+  }
+
+  .mobile-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .status-card {
+    border-radius: 8px;
+  }
+
+  .status-card-header {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e9f2;
+  }
+
+  .status-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2d3d;
+    margin-bottom: 4px;
+  }
+
+  .status-value {
+    font-size: 13px;
+    color: #909399;
+  }
+
+  .status-card-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .status-card-actions .el-button {
+    flex: 1;
+    min-height: 36px;
+  }
+
+  /* 对话框优化 */
+  .status-edit-dialog :deep(.el-dialog) {
+    margin: 5vh auto !important;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-edit-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .status-edit-dialog :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+
+  .status-edit-dialog :deep(.el-form-item__label) {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .status-edit-dialog :deep(.el-dialog) {
+    margin: 2vh auto !important;
+    max-height: 96vh;
+  }
+
+  .status-edit-dialog :deep(.el-dialog__body) {
+    padding: 12px;
+  }
+}
+
+/* 过渡动画 */
+.status-card-enter-active,
+.status-card-leave-active {
+  transition: all 0.25s ease;
+}
+
+.status-card-enter-from,
+.status-card-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>
 

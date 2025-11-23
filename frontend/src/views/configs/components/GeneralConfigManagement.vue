@@ -1,6 +1,14 @@
 <template>
   <div class="general-config-management">
-    <el-table v-loading="loading" :data="configs" stripe style="width: 100%">
+    <!-- 桌面端：表格 -->
+    <el-table
+      v-if="!isMobile"
+      v-loading="loading"
+      :data="configs"
+      stripe
+      style="width: 100%"
+      class="desktop-table"
+    >
       <el-table-column prop="key" label="配置键" width="250" />
       <el-table-column prop="description" label="描述" />
       <el-table-column label="当前值" width="200">
@@ -20,13 +28,46 @@
       </el-table-column>
     </el-table>
 
+    <!-- 手机端：卡片列表 -->
+    <div v-else v-loading="loading" class="mobile-config-list">
+      <transition-group name="config-card" tag="div">
+        <el-card
+          v-for="config in configs"
+          :key="config.key"
+          class="config-card"
+          shadow="hover"
+        >
+          <div class="config-card-header">
+            <div class="config-key">{{ config.key }}</div>
+            <el-button type="primary" size="small" @click="handleEdit(config)">
+              编辑
+            </el-button>
+          </div>
+          <div class="config-card-body">
+            <div v-if="config.description" class="config-field">
+              <span class="field-label">描述：</span>
+              <span class="field-value">{{ config.description }}</span>
+            </div>
+            <div class="config-field">
+              <span class="field-label">当前值：</span>
+              <el-tag v-if="typeof config.value === 'number'" type="primary" size="small">
+                {{ config.value }}
+              </el-tag>
+              <span v-else class="field-value">{{ config.value }}</span>
+            </div>
+          </div>
+        </el-card>
+      </transition-group>
+    </div>
+
     <!-- 编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
       :title="`编辑配置：${editingConfig?.key || ''}`"
-      width="600px"
+      :width="dialogWidth"
+      class="config-edit-dialog"
     >
-      <el-form :model="form" label-width="120px">
+      <el-form :model="form" :label-width="labelWidth">
         <el-form-item label="配置键">
           <el-input v-model="form.key" disabled />
         </el-form-item>
@@ -70,9 +111,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { configsApi } from '../../../api/configs';
+
+const isMobile = computed(() => window.innerWidth <= 768);
+const dialogWidth = computed(() => (isMobile.value ? '95%' : '600px'));
+const labelWidth = computed(() => (isMobile.value ? '80px' : '120px'));
 
 interface ConfigItem {
   key: string;
@@ -142,7 +187,7 @@ const getMaxValue = (key: string): number => {
 const loadConfigs = async () => {
   try {
     loading.value = true;
-    const response = await configsApi.getConfigs({ type: 'general' });
+    const response = await configsApi.getConfigs({ type: 'general' }) as { configs?: ConfigItem[] };
     const allConfigs = response.configs || [];
     
     // 只显示通用配置项
@@ -213,6 +258,116 @@ onMounted(() => {
 <style scoped>
 .general-config-management {
   padding: 20px 0;
+}
+
+/* 桌面端表格显示 */
+.desktop-table {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .desktop-table {
+    display: none;
+  }
+
+  .mobile-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .config-card {
+    border-radius: 8px;
+  }
+
+  .config-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e9f2;
+  }
+
+  .config-key {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2d3d;
+    word-break: break-word;
+    flex: 1;
+    margin-right: 12px;
+  }
+
+  .config-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .config-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .field-label {
+    color: #909399;
+    min-width: 60px;
+    flex-shrink: 0;
+  }
+
+  .field-value {
+    color: #303133;
+    flex: 1;
+    word-break: break-word;
+  }
+
+  /* 对话框优化 */
+  .config-edit-dialog :deep(.el-dialog) {
+    margin: 5vh auto !important;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .config-edit-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .config-edit-dialog :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+
+  .config-edit-dialog :deep(.el-form-item__label) {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .config-edit-dialog :deep(.el-dialog) {
+    margin: 2vh auto !important;
+    max-height: 96vh;
+  }
+
+  .config-edit-dialog :deep(.el-dialog__body) {
+    padding: 12px;
+  }
+}
+
+/* 过渡动画 */
+.config-card-enter-active,
+.config-card-leave-active {
+  transition: all 0.25s ease;
+}
+
+.config-card-enter-from,
+.config-card-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>
 

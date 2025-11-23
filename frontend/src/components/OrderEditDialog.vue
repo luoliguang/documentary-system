@@ -2,14 +2,16 @@
   <el-dialog
     :model-value="modelValue"
     title="编辑订单"
-    width="700px"
+    :width="dialogWidth"
+    class="order-edit-dialog"
     @update:model-value="updateValue"
   >
     <el-form
       ref="formRef"
       :model="form"
       :rules="rules"
-      label-width="120px"
+      :label-width="labelWidth"
+      class="order-edit-form"
     >
       <el-form-item v-if="authStore.canManageOrders" label="工厂订单编号" prop="order_number">
         <el-input
@@ -85,6 +87,7 @@
           format="YYYY-MM-DD HH:mm"
           :disabled-date="disabledFutureDate"
           clearable
+          popper-class="mobile-datetime-picker-popper"
         />
       </el-form-item>
 
@@ -97,6 +100,7 @@
           value-format="YYYY-MM-DD HH:mm:ss"
           format="YYYY-MM-DD HH:mm"
           clearable
+          popper-class="mobile-datetime-picker-popper"
         />
       </el-form-item>
 
@@ -131,8 +135,8 @@
       </el-form-item>
 
       <el-form-item v-if="authStore.canManageOrders" label="订单图片">
-        <!-- 粘贴提示区域 - 始终显示 -->
-        <div class="paste-hint-box">
+        <!-- 粘贴提示区域 - 仅在桌面端显示 -->
+        <div v-if="!isMobile" class="paste-hint-box">
           <div class="paste-hint-content">
             <el-icon class="paste-icon"><DocumentCopy /></el-icon>
             <div class="paste-hint-text">
@@ -146,12 +150,12 @@
           ref="uploadAreaRef"
           style="width: 100%"
           class="image-upload-area"
-          tabindex="0"
-          @paste="handlePaste"
-          @dragover.prevent
-          @drop.prevent="handleDrop"
-          @focus="handleFocus"
-          @blur="handleBlur"
+          :tabindex="isMobile ? -1 : 0"
+          @paste="handlePasteIfNotMobile"
+          @dragover.prevent="handleDragOverIfNotMobile"
+          @drop.prevent="handleDropIfNotMobile"
+          @focus="handleFocusIfNotMobile"
+          @blur="handleBlurIfNotMobile"
         >
           <div v-if="form.images && form.images.length > 0" class="image-list">
             <div v-for="(image, index) in form.images" :key="index" class="image-item">
@@ -188,7 +192,7 @@
                 <el-icon><Picture /></el-icon>
                 <span>支持 JPG、PNG 格式，单张图片不超过 5MB</span>
               </div>
-              <div class="tip-item">
+              <div v-if="!isMobile" class="tip-item">
                 <el-icon><UploadFilled /></el-icon>
                 <span>或直接拖拽图片文件到此处</span>
               </div>
@@ -272,6 +276,29 @@ const formRef = ref<FormInstance>();
 const loading = ref(false);
 const uploadAreaRef = ref<HTMLElement | null>(null);
 const isUploadAreaFocused = ref(false);
+
+// 响应式布局
+const dialogWidth = ref('700px');
+const labelWidth = ref('120px');
+const isMobile = ref(false);
+
+const updateLayout = () => {
+  const width = window.innerWidth;
+  isMobile.value = width <= 768;
+  if (width <= 480) {
+    dialogWidth.value = '95%';
+    labelWidth.value = '80px';
+  } else if (width <= 768) {
+    dialogWidth.value = '95%';
+    labelWidth.value = '100px';
+  } else if (width <= 1024) {
+    dialogWidth.value = '85%';
+    labelWidth.value = '120px';
+  } else {
+    dialogWidth.value = '700px';
+    labelWidth.value = '120px';
+  }
+};
 
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
@@ -427,6 +454,37 @@ const handleFocus = () => {
 
 const handleBlur = () => {
   isUploadAreaFocused.value = false;
+};
+
+// 移动端禁用粘贴和拖拽事件
+const handlePasteIfNotMobile = (e: ClipboardEvent) => {
+  if (!isMobile.value) {
+    handlePaste(e);
+  }
+};
+
+const handleDragOverIfNotMobile = (e: DragEvent) => {
+  if (!isMobile.value) {
+    e.preventDefault();
+  }
+};
+
+const handleDropIfNotMobile = (e: DragEvent) => {
+  if (!isMobile.value) {
+    handleDrop(e);
+  }
+};
+
+const handleFocusIfNotMobile = () => {
+  if (!isMobile.value) {
+    handleFocus();
+  }
+};
+
+const handleBlurIfNotMobile = () => {
+  if (!isMobile.value) {
+    handleBlur();
+  }
 };
 
 const handlePaste = async (event: ClipboardEvent) => {
@@ -620,17 +678,27 @@ onMounted(() => {
   loadOrderTypes();
   loadOrderStatuses();
   loadCustomers();
-  // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）
-  const pasteHandler = (e: Event) => {
-    handlePaste(e as ClipboardEvent);
-  };
-  window.addEventListener('paste', pasteHandler, true);
   
-  // 保存处理器引用以便卸载时移除
-  (window as any).__editDialogPasteHandler = pasteHandler;
+  // 初始化布局
+  updateLayout();
+  window.addEventListener('resize', updateLayout);
+  
+  // 添加全局粘贴事件监听（捕获阶段，确保能捕获到）- 仅在桌面端
+  if (!isMobile.value) {
+    const pasteHandler = (e: Event) => {
+      handlePaste(e as ClipboardEvent);
+    };
+    window.addEventListener('paste', pasteHandler, true);
+    
+    // 保存处理器引用以便卸载时移除
+    (window as any).__editDialogPasteHandler = pasteHandler;
+  }
 });
 
 onUnmounted(() => {
+  // 移除事件监听
+  window.removeEventListener('resize', updateLayout);
+  
   // 移除全局粘贴事件监听
   const pasteHandler = (window as any).__editDialogPasteHandler;
   if (pasteHandler) {
@@ -798,6 +866,167 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .order-edit-dialog :deep(.el-dialog) {
+    margin: 5vh auto !important;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .order-edit-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .order-edit-form :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+
+  .order-edit-form :deep(.el-form-item__label) {
+    font-size: 13px;
+    line-height: 1.5;
+    padding-bottom: 4px;
+  }
+
+  .order-edit-form :deep(.el-input),
+  .order-edit-form :deep(.el-select),
+  .order-edit-form :deep(.el-date-editor) {
+    width: 100% !important;
+  }
+
+  .order-edit-form :deep(.el-textarea__inner) {
+    font-size: 14px;
+  }
+
+  .tracking-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .tracking-item .el-select,
+  .tracking-item .el-input {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .image-item {
+    width: 80px;
+    height: 80px;
+  }
+
+  .paste-hint-box {
+    padding: 10px 12px;
+  }
+
+  .paste-hint-text {
+    font-size: 12px;
+  }
+
+  .paste-hint-text strong {
+    font-size: 13px;
+  }
+
+  .upload-tips {
+    padding: 12px;
+  }
+
+  .tip-item {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .order-edit-dialog :deep(.el-dialog) {
+    margin: 2vh auto !important;
+    max-height: 96vh;
+  }
+
+  .order-edit-dialog :deep(.el-dialog__header) {
+    padding: 15px;
+  }
+
+  .order-edit-dialog :deep(.el-dialog__title) {
+    font-size: 16px;
+  }
+
+  .order-edit-dialog :deep(.el-dialog__body) {
+    padding: 12px;
+  }
+
+  .order-edit-form :deep(.el-form-item) {
+    margin-bottom: 15px;
+  }
+
+  .order-edit-form :deep(.el-form-item__label) {
+    font-size: 12px;
+  }
+
+  .image-upload-area {
+    padding: 15px;
+    min-height: 80px;
+  }
+
+  .image-item {
+    width: 70px;
+    height: 70px;
+  }
+}
+
+/* 移动端日期选择器优化 */
+:deep(.mobile-datetime-picker-popper) {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  left: 0 !important;
+  right: 0 !important;
+  margin: 0 !important;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  height: 100vh !important;
+  z-index: 3000 !important;
+}
+
+:deep(.mobile-datetime-picker-popper .el-picker__panel) {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+:deep(.mobile-datetime-picker-popper .el-date-picker__header) {
+  padding: 15px 20px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+:deep(.mobile-datetime-picker-popper .el-picker-panel__content) {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+:deep(.mobile-datetime-picker-popper .el-time-panel) {
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+:deep(.mobile-datetime-picker-popper .el-time-spinner__wrapper) {
+  width: 100% !important;
+}
+
+@media (max-width: 768px) {
+  :deep(.mobile-datetime-picker-popper) {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
 }
 </style>
 

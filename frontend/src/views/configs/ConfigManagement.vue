@@ -7,7 +7,11 @@
         </div>
       </template>
 
-      <el-tabs v-model="activeTab" type="border-card">
+      <el-tabs
+        v-model="activeTab"
+        :type="isMobile ? 'card' : 'border-card'"
+        class="config-tabs"
+      >
         <el-tab-pane label="角色管理" name="roles">
           <RoleManagement />
         </el-tab-pane>
@@ -33,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 // @ts-ignore - Vue SFC with script setup
 import RoleManagement from './components/RoleManagement.vue';
 // @ts-ignore - Vue SFC with script setup
@@ -46,6 +50,7 @@ import PermissionManagement from './components/PermissionManagement.vue';
 import GeneralConfigManagement from './components/GeneralConfigManagement.vue';
 
 const activeTab = ref('roles');
+const isMobile = computed(() => window.innerWidth <= 768);
 </script>
 
 <style scoped>
@@ -61,6 +66,25 @@ const activeTab = ref('roles');
 
 .card-header h3 {
   margin: 0;
+}
+
+@media (max-width: 768px) {
+  .config-management {
+    padding: 10px;
+  }
+
+  .config-tabs :deep(.el-tabs__header) {
+    margin: 0;
+  }
+
+  .config-tabs :deep(.el-tabs__item) {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+
+  .config-tabs :deep(.el-tabs__content) {
+    padding: 10px;
+  }
 }
 </style>
 

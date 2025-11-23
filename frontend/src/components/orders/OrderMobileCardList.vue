@@ -1,212 +1,123 @@
 <template>
   <div class="order-mobile-list" v-loading="loading">
     <transition-group name="order-card" tag="div">
-      <article
+      <el-card
         v-for="order in orders"
         :key="order.id"
         class="order-card"
+        shadow="hover"
+        @click="handleCardClick(order.id)"
       >
-        <header class="card-header">
-          <div class="header-main">
-            <div class="order-no">
-              <span class="label">订单</span>
-              <span class="value">{{ order.order_number }}</span>
-            </div>
-            <div v-if="order.customer_order_number" class="customer-no">
-              客户：{{ order.customer_order_number }}
-            </div>
-          </div>
-          <div class="header-right">
-            <el-tag :type="getStatusType(order.status)" size="small">
-              {{ getStatusText(order.status) }}
-            </el-tag>
-            <el-badge
-              v-if="getOrderReminderCount(order.id) > 0"
-              :value="getOrderReminderCount(order.id)"
-              type="danger"
-            />
-            <el-badge
-              v-if="getOrderAssignmentCount(order.id) > 0"
-              :value="getOrderAssignmentCount(order.id)"
-              type="primary"
-            />
-          </div>
-        </header>
-
-        <section class="card-preview">
-          <el-image
-            v-if="order.images && order.images.length > 0"
-            :src="order.images[0]"
-            :preview-src-list="order.images"
-            :initial-index="0"
-            fit="cover"
-            class="order-thumbnail"
-            :preview-teleported="true"
-            lazy
-          >
-            <template #error>
-              <div class="image-slot">
-                <el-icon><Picture /></el-icon>
-              </div>
-            </template>
-          </el-image>
-          <div v-else class="image-slot empty">暂无制单图</div>
-
-          <div class="status-summary">
-            <div class="status-item">
-              <span class="title">完成</span>
-              <el-switch
-                v-if="auth.canManageOrders || auth.isProductionManager"
-                v-model="order.is_completed"
-                size="small"
-                @change="emit('update-completed', order)"
-              />
-              <el-tag v-else :type="order.is_completed ? 'success' : 'info'" size="small">
-                {{ order.is_completed ? '是' : '否' }}
-              </el-tag>
-            </div>
-            <div class="status-item">
-              <span class="title">可出货</span>
-              <el-switch
-                v-if="auth.canManageOrders || auth.isProductionManager"
-                v-model="order.can_ship"
-                size="small"
-                @change="emit('update-can-ship', order)"
-              />
-              <el-tag v-else :type="order.can_ship ? 'success' : 'info'" size="small">
-                {{ order.can_ship ? '是' : '否' }}
-              </el-tag>
-            </div>
-          </div>
-        </section>
-
-        <section class="card-meta">
-          <div
-            v-if="auth.canManageOrders || auth.isProductionManager"
-            class="meta-line"
-          >
-            <span class="meta-label">生产跟单</span>
-            <span class="meta-value">{{ getAssignedNames(order) || '未分配' }}</span>
-          </div>
-          <div v-if="auth.canManageOrders && order.company_name" class="meta-line">
-            <span class="meta-label">客户公司</span>
-            <span class="meta-value">{{ order.company_name }}</span>
-          </div>
-          <div class="meta-line">
-            <span class="meta-label">预计出货</span>
-            <div class="meta-control">
-              <el-date-picker
-                v-if="auth.canManageOrders || auth.isProductionManager"
-                v-model="order.estimated_ship_date"
-                type="datetime"
-                placeholder="选择日期时间"
-                size="small"
-                class="date-picker"
-                value-format="YYYY-MM-DD HH:mm:ss"
-                format="YYYY-MM-DD HH:mm"
-                @change="(val: string | null) => emit('update-estimated-ship-date', { order, value: val })"
-              />
-              <span v-else>{{ formatDateTime(order.estimated_ship_date || '') }}</span>
-            </div>
-          </div>
-          <div v-if="order.notes" class="meta-line">
-            <span class="meta-label">备注</span>
-            <span class="meta-value notes">{{ order.notes }}</span>
-          </div>
-        </section>
-
-        <section
-          v-if="auth.canManageOrders"
-          class="card-control"
-        >
-          <div class="control-item">
-            <span class="meta-label">状态</span>
-            <el-select
-              v-model="order.status"
-              size="small"
-              class="status-select"
-              @change="emit('update-status', order)"
+        <!-- 第1行：制单图 + 订单号 + 编辑/分配按钮 -->
+        <div class="card-row row-1">
+          <div class="thumbnail-wrapper" @click.stop="handleImageClick()">
+            <el-image
+              v-if="order.images && order.images.length > 0"
+              :src="order.images[0]"
+              :preview-src-list="order.images"
+              :initial-index="0"
+              fit="cover"
+              class="order-thumbnail"
+              :preview-teleported="true"
+              lazy
             >
-              <el-option
-                v-for="status in orderStatuses"
-                :key="status.value"
-                :label="status.label"
-                :value="status.value"
-              />
-            </el-select>
+              <template #error>
+                <div class="image-slot">
+                  <el-icon><Picture /></el-icon>
+                </div>
+              </template>
+            </el-image>
+            <div v-else class="image-slot empty">暂无制单图</div>
           </div>
-        </section>
-
-        <section
-          v-if="auth.isCustomer || auth.canManageOrders || auth.isProductionManager"
-          class="card-reminder"
-        >
-          <div class="reminder-info" v-if="auth.isCustomer">
-            <div class="reminder-title">催货状态</div>
-            <div class="reminder-desc">
-              <span v-if="order.can_ship">已可出货</span>
-              <span v-else-if="reminderStats && !reminderStats.canRemind(order.id)">
-                再等 {{ reminderStats?.formatRemainingTime(getReminderCountdown(order.id)) }}
-              </span>
-              <span v-else>可立即催货</span>
-            </div>
+          <div class="order-number">{{ order.order_number }}</div>
+          <div class="action-buttons" v-if="auth.canManageOrders">
+            <el-button
+              circle
+              size="small"
+              class="icon-btn"
+              @click.stop="emit('quick-edit', order)"
+            >
+              <el-icon><EditPen /></el-icon>
+            </el-button>
+            <el-button
+              circle
+              size="small"
+              :type="order.assigned_to_ids?.length ? 'success' : 'default'"
+              class="icon-btn"
+              @click.stop="emit('assign', order)"
+            >
+              <el-icon><User /></el-icon>
+            </el-button>
           </div>
-          <el-button
-            v-if="auth.isCustomer"
-            type="warning"
-            size="small"
-            plain
-            :disabled="order.can_ship || (reminderStats && !reminderStats.canRemind(order.id))"
-            @click="emit('reminder', order.id)"
-          >
-            催货
-          </el-button>
-        </section>
+        </div>
 
-        <footer class="card-actions">
-          <el-button type="primary" size="small" @click="emit('view', order.id)">
-            查看
-          </el-button>
-          <el-button
-            v-if="auth.canManageOrders"
-            type="success"
+        <!-- 第2行：客户公司名 + 状态标签 + 箭头 -->
+        <div class="card-row row-2">
+          <span class="company-name">{{ order.company_name || '未设置' }}</span>
+          <el-tag
+            :type="getStatusType(order.status)"
+            :class="{ 'urgent-tag': isUrgentStatus(order.status) }"
             size="small"
-            @click="emit('quick-edit', order)"
           >
-            编辑
-          </el-button>
-          <el-button
-            v-if="auth.canManageOrders && !order.is_completed"
-            type="success"
-            size="small"
-            @click="emit('complete', order.id)"
+            {{ getStatusText(order.status) }}
+          </el-tag>
+          <div class="arrow-icon" @click.stop="handleCardClick(order.id)">
+            <el-icon><Right /></el-icon>
+          </div>
+        </div>
+
+        <!-- 第3行：预计出货日期（延误标红） -->
+        <div class="card-row row-3">
+          <span class="ship-date-label">预计出货：</span>
+          <span
+            class="ship-date-value"
+            :class="{ 'delayed': isDelayed(order) }"
           >
-            完成
-          </el-button>
-          <el-button
-            v-if="auth.canManageOrders"
-            :type="order.assigned_to_ids?.length ? 'success' : 'info'"
-            size="small"
-            @click="emit('assign', order)"
-          >
-            {{ order.assigned_to_ids?.length ? '已分配' : '分配' }}
-          </el-button>
-          <el-button
-            v-if="auth.canManageOrders"
-            type="danger"
-            size="small"
-            @click="emit('delete', order)"
-          >
-            删除
-          </el-button>
-        </footer>
-      </article>
+            {{ formatShipDate(order.estimated_ship_date) }}
+            <span v-if="getDelayDays(order) > 0" class="delay-badge">
+              延误{{ getDelayDays(order) }}天
+            </span>
+          </span>
+        </div>
+
+        <!-- 第4行：两个超大开关 -->
+        <div class="card-row row-4">
+          <div class="switch-item">
+            <span class="switch-label">已完成</span>
+            <el-switch
+              v-if="auth.canManageOrders || auth.isProductionManager"
+              v-model="order.is_completed"
+              size="large"
+              class="large-switch"
+              @change="emit('update-completed', order)"
+              @click.stop
+            />
+            <el-tag v-else :type="order.is_completed ? 'success' : 'info'" size="small">
+              {{ order.is_completed ? '是' : '否' }}
+            </el-tag>
+          </div>
+          <div class="switch-item">
+            <span class="switch-label">可出货</span>
+            <el-switch
+              v-if="auth.canManageOrders || auth.isProductionManager"
+              v-model="order.can_ship"
+              size="large"
+              class="large-switch"
+              @change="emit('update-can-ship', order)"
+              @click.stop
+            />
+            <el-tag v-else :type="order.can_ship ? 'success' : 'info'" size="small">
+              {{ order.can_ship ? '是' : '否' }}
+            </el-tag>
+          </div>
+        </div>
+      </el-card>
     </transition-group>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Picture } from '@element-plus/icons-vue';
+import { Picture, EditPen, User, Right } from '@element-plus/icons-vue';
 import type { Order } from '../../types';
 
 interface AuthFlags {
@@ -244,21 +155,6 @@ withDefaults(
   }
 );
 
-const getAssignedNames = (order: Order): string => {
-  if (order.assigned_team?.length) {
-    return order.assigned_team
-      .map((member) => member.username || `ID ${member.id}`)
-      .join('、');
-  }
-  if (order.assigned_to_names?.length) {
-    return order.assigned_to_names.join('、');
-  }
-  if (order.assigned_to_name) {
-    return order.assigned_to_name;
-  }
-  return '';
-};
-
 const emit = defineEmits<{
   (e: 'view', orderId: number): void;
   (e: 'quick-edit', order: Order): void;
@@ -271,197 +167,306 @@ const emit = defineEmits<{
   (e: 'update-can-ship', order: Order): void;
   (e: 'update-estimated-ship-date', payload: { order: Order; value: string | null }): void;
 }>();
+
+const handleCardClick = (orderId: number) => {
+  emit('view', orderId);
+};
+
+const handleImageClick = () => {
+  // 图片点击事件由 el-image 的 preview 功能处理
+};
+
+const formatShipDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '未设置';
+  try {
+    const date = new Date(dateStr);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day} ${hours}:${minutes}`;
+  } catch {
+    return '日期格式错误';
+  }
+};
+
+const isDelayed = (order: Order): boolean => {
+  if (!order.estimated_ship_date) return false;
+  try {
+    const shipDate = new Date(order.estimated_ship_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    shipDate.setHours(0, 0, 0, 0);
+    return shipDate < today && !order.is_completed;
+  } catch {
+    return false;
+  }
+};
+
+const getDelayDays = (order: Order): number => {
+  if (!order.estimated_ship_date || order.is_completed) return 0;
+  try {
+    const shipDate = new Date(order.estimated_ship_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    shipDate.setHours(0, 0, 0, 0);
+    const diffTime = today.getTime() - shipDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const isUrgentStatus = (status: string): boolean => {
+  const urgentStatuses = ['urgent', 'overdue', 'delayed'];
+  return urgentStatuses.includes(status.toLowerCase());
+};
 </script>
 
 <style scoped>
 .order-mobile-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding: 0;
 }
 
 .order-card {
-  background: #fff;
-  border: 1px solid #e9edf5;
-  border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  height: 130px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.card-header {
-  display: flex;
   justify-content: space-between;
-  gap: 12px;
-}
-
-.order-no .label {
-  font-size: 12px;
-  color: #909399;
-  margin-right: 6px;
-}
-
-.order-no .value {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2d3d;
-}
-
-.customer-no {
-  font-size: 13px;
-  color: #606266;
-  margin-top: 4px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
   gap: 6px;
 }
 
-.card-preview {
-  display: flex;
-  gap: 12px;
+.order-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
-.order-thumbnail {
-  width: 96px;
-  height: 96px;
-  border-radius: 12px;
-  object-fit: cover;
-  border: 1px solid #f0f2f5;
+.order-card :deep(.el-card__body) {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
+/* 第1行：制单图 + 订单号 + 按钮 */
+.row-1 {
+  height: 36px;
+  justify-content: space-between;
+}
+
+.thumbnail-wrapper {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: visible;
+  cursor: pointer;
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.order-thumbnail {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
 .image-slot {
-  width: 96px;
-  height: 96px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
   border: 1px dashed #dcdfe6;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #c0c4cc;
-  font-size: 13px;
-  flex-shrink: 0;
+  font-size: 10px;
+  background: #f5f7fa;
 }
 
 .image-slot.empty {
-  font-size: 12px;
-  letter-spacing: 1px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
 }
 
-.status-summary {
+.order-number {
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d3d;
+  text-align: left;
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status-item {
-  background: #f9fafc;
-  border-radius: 10px;
-  padding: 10px;
+.action-buttons {
   display: flex;
-  justify-content: space-between;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  display: flex;
   align-items: center;
-  border: 1px solid #eef2f7;
+  justify-content: center;
 }
 
-.status-item .title {
-  font-size: 13px;
-  color: #606266;
+.icon-btn :deep(.el-icon) {
+  font-size: 16px;
 }
 
-.card-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.meta-line {
-  display: flex;
+/* 第2行：客户公司名 + 状态标签 + 箭头 */
+.row-2 {
+  height: 24px;
   justify-content: space-between;
-  gap: 12px;
+}
+
+.company-name {
+  flex: 1;
   font-size: 13px;
-  color: #303133;
-}
-
-.meta-label {
-  color: #909399;
-  min-width: 70px;
-  font-size: 12px;
-}
-
-.meta-value {
-  flex: 1;
-  text-align: right;
-}
-
-.meta-value.notes {
   color: #606266;
-  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
 }
 
-.meta-control {
-  flex: 1;
-  text-align: right;
+.urgent-tag {
+  background-color: #f56c6c !important;
+  border-color: #f56c6c !important;
+  color: #fff !important;
 }
 
-.date-picker {
-  width: 100%;
-}
-
-.card-control {
-  border-top: 1px dashed #e5e9f2;
-  padding-top: 12px;
-}
-
-.control-item {
+.arrow-icon {
+  width: 48px;
+  height: 48px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: #909399;
+  transition: color 0.2s;
+}
+
+.arrow-icon:hover {
+  color: #409eff;
+}
+
+.arrow-icon :deep(.el-icon) {
+  font-size: 20px;
+}
+
+/* 第3行：预计出货日期 */
+.row-3 {
+  height: 22px;
+  justify-content: flex-start;
   gap: 6px;
 }
 
-.status-select {
-  width: 100%;
+.ship-date-label {
+  font-size: 12px;
+  color: #909399;
+  flex-shrink: 0;
 }
 
-.card-reminder {
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff7e6;
-  border: 1px solid #ffe3ba;
+.ship-date-value {
+  font-size: 12px;
+  color: #303133;
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.ship-date-value.delayed {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.delay-badge {
+  background: #f56c6c;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 第4行：两个超大开关 */
+.row-4 {
+  height: 32px;
   justify-content: space-between;
   gap: 12px;
 }
 
-.reminder-title {
-  font-weight: 600;
-  color: #d48806;
-  font-size: 13px;
-}
-
-.reminder-desc {
-  color: #ad6800;
-  font-size: 12px;
-}
-
-.card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.card-actions .el-button {
+.switch-item {
   flex: 1;
-  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f5f7fa;
+  padding: 6px 10px;
+  border-radius: 6px;
+  min-height: 48px;
 }
 
+.switch-label {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.large-switch {
+  flex-shrink: 0;
+}
+
+.large-switch :deep(.el-switch__core) {
+  width: 50px;
+  height: 28px;
+  min-width: 50px;
+}
+
+.large-switch :deep(.el-switch__core::after) {
+  width: 24px;
+  height: 24px;
+}
+
+.large-switch :deep(.el-switch.is-checked .el-switch__core::after) {
+  margin-left: -24px;
+}
+
+/* 过渡动画 */
 .order-card-enter-active,
 .order-card-leave-active {
   transition: all 0.25s ease;
@@ -473,32 +478,76 @@ const emit = defineEmits<{
   transform: translateY(8px);
 }
 
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .order-mobile-list {
+    gap: 6px;
+  }
+
+  .order-card {
+    height: 200px;
+    padding: 8px 10px;
+    gap: 10px;
+    margin-bottom: 7px !important;
+  }
+
+  .row-1 {
+    height: 36px;
+  }
+
+  .row-2 {
+    height: 24px;
+  }
+
+  .row-3 {
+    height: 22px;
+  }
+
+  .row-4 {
+    height: 32px;
+  }
+
+  .order-number {
+    font-size: 17px;
+  }
+
+  .company-name {
+    font-size: 12px;
+  }
+
+  .switch-label {
+    font-size: 13px;
+  }
+}
+
 @media (max-width: 480px) {
   .order-card {
-    padding: 14px;
+    height: 200px;
+    padding: 8px 10px;
+    gap: 10px;
+    margin-bottom: 7px !important;
   }
 
-  .card-preview {
-    flex-direction: column;
+  .order-number {
+    font-size: 16px;
   }
 
-  .status-summary {
-    grid-template-columns: 1fr;
+  .company-name {
+    font-size: 11px;
   }
 
-  .meta-line {
-    flex-direction: column;
-    align-items: flex-start;
+  .switch-label {
+    font-size: 12px;
   }
 
-  .meta-value,
-  .meta-control {
-    text-align: left;
+  .large-switch :deep(.el-switch__core) {
+    width: 48px;
+    height: 26px;
   }
 
-  .card-actions .el-button {
-    min-width: 48%;
+  .large-switch :deep(.el-switch__core::after) {
+    width: 22px;
+    height: 22px;
   }
 }
 </style>
-

@@ -572,6 +572,9 @@ onUnmounted(() => {
 <style scoped>
 .order-detail {
   width: 100%;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .card-header {
@@ -582,6 +585,8 @@ onUnmounted(() => {
 
 .detail-content {
   padding: 10px 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 h4 {
@@ -678,6 +683,188 @@ h4 {
     position: sticky;
     top: 20px;
     max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .order-detail {
+    padding-bottom: 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .order-detail :deep(.el-card) {
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .order-detail :deep(.el-card__body) {
+    padding: 15px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .card-header h3 {
+    font-size: 18px;
+    margin: 0;
+  }
+
+  .header-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .header-actions .el-button {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .detail-content {
+    padding: 0;
+    padding-bottom: 20px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .detail-content :deep(.el-descriptions) {
+    font-size: 14px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .detail-content :deep(.el-descriptions__label) {
+    width: 100px;
+    font-size: 13px;
+    word-break: break-word;
+  }
+
+  .detail-content :deep(.el-descriptions__content) {
+    font-size: 13px;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .detail-content :deep(.el-descriptions) {
+    --el-descriptions-table-border: 1px solid #ebeef5;
+  }
+
+  .detail-content :deep(.el-descriptions__table) {
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .detail-content :deep(.el-descriptions__table td),
+  .detail-content :deep(.el-descriptions__table th) {
+    padding: 12px 8px;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* 移动端日期选择器优化 */
+  .detail-content :deep(.el-date-editor) {
+    width: 100% !important;
+  }
+
+  .detail-content :deep(.el-date-editor .el-input__inner) {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 12px 15px;
+  }
+
+  /* 日期选择器弹窗在移动端全屏显示 */
+  .detail-content :deep(.el-picker__popper) {
+    width: 100vw !important;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 !important;
+    max-width: 100vw !important;
+  }
+
+  .detail-content :deep(.el-picker__panel) {
+    width: 100% !important;
+  }
+
+  .order-image {
+    width: 100px;
+    height: 100px;
+  }
+
+  .tracking-tag {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  .order-detail-layout {
+    margin-top: 15px;
+    gap: 15px;
+  }
+
+  /* 移动端隐藏侧边栏时间线，改为底部可滑动 */
+  .order-detail-sidebar {
+    position: relative;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    padding: 15px;
+    background: #fff;
+  }
+}
+
+/* 全局移动端按钮和输入框优化 */
+@media (max-width: 768px) {
+  :deep(.el-button) {
+    min-height: 44px;
+    font-size: 16px;
+    padding: 12px 20px;
+  }
+
+  :deep(.el-button--small) {
+    min-height: 36px;
+    font-size: 14px;
+    padding: 8px 16px;
+  }
+
+  :deep(.el-input__inner),
+  :deep(.el-textarea__inner) {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 12px 15px;
+  }
+
+  :deep(.el-select .el-input__inner) {
+    min-height: 44px;
+  }
+
+  :deep(.el-form-item__label) {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  :deep(.el-dialog) {
+    width: 90% !important;
+    margin: 5vh auto !important;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 15px;
+    max-height: calc(100vh - 200px);
     overflow-y: auto;
   }
 }

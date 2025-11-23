@@ -86,16 +86,40 @@
             </el-select>
           </el-form-item>
           <el-form-item label="预计出货时间">
+            <!-- 桌面端：使用日期范围选择器 -->
             <el-date-picker
-              v-model="filters.estimated_ship_date_range"
+              v-if="!estimatedShipDateRange.isMobile.value"
+              v-model="estimatedShipDateRange.dateRange.value"
               type="daterange"
               range-separator="至"
               start-placeholder="开始日期"
               end-placeholder="结束日期"
               value-format="YYYY-MM-DD"
               class="filter-select"
-              :unlink-panels="true"
+              :unlink-panels="false"
+              popper-class="mobile-date-picker-popper"
             />
+            <!-- 手机端：使用两个独立的日期选择器 -->
+            <div v-else class="mobile-date-range">
+              <el-date-picker
+                v-model="estimatedShipDateRange.dateStart.value"
+                type="date"
+                placeholder="开始日期"
+                value-format="YYYY-MM-DD"
+                class="filter-select mobile-date-picker"
+                popper-class="mobile-date-picker-popper"
+                style="width: 100%; margin-bottom: 8px;"
+              />
+              <el-date-picker
+                v-model="estimatedShipDateRange.dateEnd.value"
+                type="date"
+                placeholder="结束日期"
+                value-format="YYYY-MM-DD"
+                class="filter-select mobile-date-picker"
+                popper-class="mobile-date-picker-popper"
+                style="width: 100%;"
+              />
+            </div>
           </el-form-item>
           <el-form-item class="filter-buttons">
             <el-button type="primary" @click="loadOrders">查询</el-button>
@@ -471,6 +495,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, onUnmounted, nextTick, watch, computed } from 'vue';
+import { useMobileDateRange } from '../../composables/useMobileDateRange';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture } from '@element-plus/icons-vue';
@@ -514,6 +539,9 @@ const isMobile = ref(window.innerWidth <= 768);
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768;
 };
+
+// 使用手机端日期范围 composable
+const estimatedShipDateRange = useMobileDateRange();
 
 // 加载客户公司列表
 const loadCompanyNames = async () => {
@@ -569,7 +597,63 @@ const filters = reactive({
   is_completed: 'all' as 'all' | boolean | undefined,
   company_name: '',
   estimated_ship_date_range: [] as string[],
+  // 手机端独立的开始和结束日期（已迁移到 composable，保留用于兼容）
+  estimated_ship_date_start: '' as string,
+  estimated_ship_date_end: '' as string,
 });
+
+// 同步 composable 的数据到 filters（用于兼容现有代码）
+watch(
+  () => estimatedShipDateRange.dateRange.value,
+  (range) => {
+    filters.estimated_ship_date_range = range;
+  },
+  { immediate: true }
+);
+
+watch(
+  () => estimatedShipDateRange.dateStart.value,
+  (start) => {
+    filters.estimated_ship_date_start = start;
+  },
+  { immediate: true }
+);
+
+watch(
+  () => estimatedShipDateRange.dateEnd.value,
+  (end) => {
+    filters.estimated_ship_date_end = end;
+  },
+  { immediate: true }
+);
+
+// 反向同步：从 filters 同步到 composable
+watch(
+  () => filters.estimated_ship_date_range,
+  (range) => {
+    if (JSON.stringify(range) !== JSON.stringify(estimatedShipDateRange.dateRange.value)) {
+      estimatedShipDateRange.dateRange.value = range;
+    }
+  }
+);
+
+watch(
+  () => filters.estimated_ship_date_start,
+  (start) => {
+    if (start !== estimatedShipDateRange.dateStart.value) {
+      estimatedShipDateRange.dateStart.value = start;
+    }
+  }
+);
+
+watch(
+  () => filters.estimated_ship_date_end,
+  (end) => {
+    if (end !== estimatedShipDateRange.dateEnd.value) {
+      estimatedShipDateRange.dateEnd.value = end;
+    }
+  }
+);
 
 // 监听选项加载，确保默认值正确显示
 watch(
@@ -703,32 +787,19 @@ const formatDateTime = (date: string) => {
 };
 
 // formatDateTimeForPicker 函数已移除，现在直接使用 v-model 绑定日期字符串
-
-const formatDateUTC = (dateObj: Date) => {
-  const year = dateObj.getUTCFullYear();
-  const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(dateObj.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+// formatDateUTC 函数已迁移到 useMobileDateRange composable 中
 
 const buildEstimatedShipRange = () => {
-  let estimatedShipStart: string | undefined;
-  let estimatedShipEnd: string | undefined;
-  if (
-    filters.estimated_ship_date_range &&
-    filters.estimated_ship_date_range.length === 2
-  ) {
-    const [start, end] = filters.estimated_ship_date_range;
-    if (start) {
-      estimatedShipStart = `${start} 00:00:00`;
-    }
-    if (end) {
-      const endDate = new Date(`${end}T00:00:00Z`);
-      endDate.setUTCDate(endDate.getUTCDate() + 1);
-      estimatedShipEnd = `${formatDateUTC(endDate)} 00:00:00`;
-    }
-  }
-  return { estimatedShipStart, estimatedShipEnd };
+  const { start, end } = estimatedShipDateRange.buildQueryParams({
+    startTime: '00:00:00',
+    endTime: '00:00:00',
+    addOneDayToEnd: true,
+  });
+  
+  return {
+    estimatedShipStart: start,
+    estimatedShipEnd: end,
+  };
 };
 
 const loadOrders = async () => {
@@ -846,7 +917,7 @@ const resetFilters = () => {
   filters.status = 'all';
   filters.is_completed = 'all';
   filters.company_name = '';
-  filters.estimated_ship_date_range = [];
+  estimatedShipDateRange.reset();
   currentPage.value = 1;
   loadOrders();
 };
@@ -1353,6 +1424,17 @@ onMounted(() => {
 
   .create-btn {
     width: 100%;
+  }
+
+  .mobile-date-range {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .mobile-date-picker {
+    width: 100% !important;
   }
 
   .filter-form :deep(.el-form-item) {

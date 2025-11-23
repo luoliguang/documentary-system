@@ -165,5 +165,72 @@ onMounted(() => {
   margin-top: 20px;
   text-align: right;
 }
+
+@media (max-width: 768px) {
+  .permission-management {
+    padding: 10px 0;
+  }
+
+  .permission-content {
+    gap: 15px;
+  }
+
+  .role-card {
+    margin-bottom: 0;
+  }
+
+  .role-header h4 {
+    font-size: 16px;
+  }
+
+  .resource-section {
+    margin-bottom: 15px;
+  }
+
+  .resource-section h5 {
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+
+  .permissions-list {
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .permissions-list :deep(.el-checkbox) {
+    margin-right: 0;
+    margin-bottom: 8px;
+  }
+
+  .actions {
+    margin-top: 15px;
+    text-align: center;
+  }
+
+  .actions .el-button {
+    width: 100%;
+    margin-bottom: 8px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .el-button+.el-button{
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .role-header h4 {
+    font-size: 15px;
+  }
+
+  .resource-section h5 {
+    font-size: 14px;
+  }
+
+  .permissions-list {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
 </style>
 

@@ -58,7 +58,7 @@
       </div>
     </el-header>
 
-    <el-container>
+    <el-container class="layout-container">
       <!-- 桌面端侧边栏 -->
       <el-aside width="200px" class="layout-aside desktop-aside">
         <el-menu
@@ -193,20 +193,68 @@
 
     <!-- 通知中心 -->
     <NotificationCenter v-model="notificationCenterVisible" />
+
+    <!-- 移动端底部 TabBar -->
+    <div class="mobile-tabbar">
+      <div
+        class="tabbar-item"
+        :class="{ active: activeMenu === '/' }"
+        @click="handleTabClick('/')"
+      >
+        <el-icon><List /></el-icon>
+        <span>订单</span>
+      </div>
+      <div
+        v-if="authStore.canManageReminders || authStore.isProductionManager || authStore.isCustomer"
+        class="tabbar-item"
+        :class="{
+          active:
+            activeMenu === '/reminders' ||
+            activeMenu === '/follow-ups',
+        }"
+        @click="handleTabClick(authStore.canManageReminders ? '/reminders' : authStore.isProductionManager ? '/follow-ups' : '/reminders')"
+      >
+        <el-icon><Bell /></el-icon>
+        <span>催单</span>
+        <el-badge
+          v-if="notificationsStore.unreadCount > 0"
+          :value="notificationsStore.unreadCount"
+          class="tabbar-badge"
+        />
+      </div>
+      <div
+        v-if="authStore.canManageOrders"
+        class="tabbar-item"
+        :class="{ active: activeMenu === '/orders/create' }"
+        @click="handleTabClick('/orders/create')"
+      >
+        <el-icon><Plus /></el-icon>
+        <span>创建</span>
+      </div>
+      <div
+        class="tabbar-item"
+        :class="{ active: activeMenu === '/profile' }"
+        @click="handleTabClick('/profile')"
+      >
+        <el-icon><User /></el-icon>
+        <span>我的</span>
+      </div>
+    </div>
   </el-container>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Bell, User } from '@element-plus/icons-vue';
+import { Bell, User, List, Plus } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useNotificationsStore } from '../../stores/notifications';
 // @ts-ignore - Vue SFC with script setup
 import NotificationCenter from '../NotificationCenter.vue';
 
 const route = useRoute();
+const router = useRouter();
 const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
 
@@ -229,6 +277,12 @@ const handleMenuSelect = () => {
   }
 };
 
+const handleTabClick = (path: string) => {
+  if (route.path !== path) {
+    router.push(path);
+  }
+};
+
 // 启动通知轮询
 onMounted(() => {
   if (
@@ -248,6 +302,9 @@ onUnmounted(() => {
 <style scoped>
 .main-layout {
   height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .layout-header {
@@ -257,8 +314,13 @@ onUnmounted(() => {
   background: #fff;
   border-bottom: 1px solid #e4e7ed;
   padding: 0 20px;
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 1000;
+  height: 60px;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -323,9 +385,24 @@ onUnmounted(() => {
   max-width: 150px;
 }
 
+.layout-container {
+  margin-top: 60px;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+  display: flex;
+}
+
 .layout-aside {
   background: #fff;
   border-right: 1px solid #e4e7ed;
+  position: fixed;
+  left: 0;
+  top: 60px;
+  bottom: 0;
+  width: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 999;
 }
 
 .desktop-aside {
@@ -334,6 +411,10 @@ onUnmounted(() => {
 
 .sidebar-menu {
   border-right: none;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .mobile-drawer {
@@ -344,6 +425,11 @@ onUnmounted(() => {
   background: #f5f7fa;
   padding: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  margin-left: 200px;
+  height: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 移动端适配 */
@@ -370,9 +456,23 @@ onUnmounted(() => {
     font-size: 16px;
   }
 
+  /* 移动端布局容器调整 */
+  .layout-container {
+    margin-top: 60px;
+    height: calc(100vh - 60px);
+  }
+
   /* 移动端隐藏桌面侧边栏 */
   .desktop-aside {
     display: none !important;
+  }
+
+  /* 移动端侧边栏不固定 */
+  .layout-aside {
+    position: static;
+    width: auto;
+    top: auto;
+    bottom: auto;
   }
 
   /* 移动端显示抽屉 */
@@ -382,6 +482,15 @@ onUnmounted(() => {
 
   .layout-main {
     padding: 15px 10px;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    margin-left: 0;
+  }
+
+  .layout-main :deep(.el-card) {
+    margin: 0;
+    border-radius: 0;
   }
 }
 
@@ -393,6 +502,82 @@ onUnmounted(() => {
 
   .desktop-aside {
     display: block;
+  }
+
+  /* 桌面端隐藏底部 TabBar */
+  .mobile-tabbar {
+    display: none !important;
+  }
+
+  /* 桌面端确保主内容区域有正确的左边距 */
+  .layout-main {
+    margin-left: 200px;
+  }
+}
+
+/* 移动端底部 TabBar */
+.mobile-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: #fff;
+  border-top: 1px solid #e4e7ed;
+  padding: 8px 0;
+  z-index: 1000;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  height: 56px;
+}
+
+.tabbar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  cursor: pointer;
+  color: #909399;
+  transition: color 0.3s;
+  position: relative;
+  min-height: 48px;
+  padding: 4px 8px;
+}
+
+.tabbar-item .el-icon {
+  font-size: 22px;
+  margin-bottom: 2px;
+}
+
+.tabbar-item span {
+  font-size: 12px;
+}
+
+.tabbar-item.active {
+  color: #409eff;
+}
+
+.tabbar-item:active {
+  opacity: 0.7;
+}
+
+.tabbar-badge {
+  position: absolute;
+  top: 2px;
+  right: 50%;
+  transform: translateX(12px);
+}
+
+/* 移动端主内容区域底部留白，避免被 TabBar 遮挡 */
+@media (max-width: 768px) {
+  .layout-main {
+    padding-bottom: 70px !important;
+  }
+
+  .main-layout {
+    padding-bottom: 56px;
   }
 }
 </style>
