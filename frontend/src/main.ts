@@ -91,35 +91,72 @@ if (isCapacitorApp()) {
       });
     }
 
-    if (statusBarModule) {
-      const { StatusBar, Style } = statusBarModule;
-      // 初始化状态栏
-      // 设置为 Light 样式（深色文字），背景色为浅色
-      StatusBar.setStyle({ style: Style.Light });
-      StatusBar.setBackgroundColor({ color: '#409eff' });
-      // 设置状态栏覆盖模式，让内容可以延伸到状态栏下方
-      StatusBar.setOverlaysWebView({ overlay: false });
-      
-      // 获取状态栏高度并设置 CSS 变量（用于 Android 设备兼容）
-      // 注意：StatusBar 插件可能没有 getInfo，使用默认值
-      // Android 设备通常状态栏高度为 24-48px，华为设备通常为 24px
-      const defaultStatusBarHeight = isCapacitorApp() ? 24 : 0;
-      document.documentElement.style.setProperty('--status-bar-height', `${defaultStatusBarHeight}px`);
-      
-      // 尝试使用 window 对象获取状态栏高度（如果可用）
-      if (typeof (window as any).devicePixelRatio !== 'undefined') {
-        // 某些设备可以通过 screen 对象获取
-        try {
-          const screenHeight = window.screen.height;
-          const windowHeight = window.innerHeight;
-          const statusBarHeight = Math.max(0, screenHeight - windowHeight - 60); // 60 是 header 高度
-          if (statusBarHeight > 0 && statusBarHeight < 100) {
-            document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
+    // StatusBar 初始化（仅在真正的 Capacitor App 环境中）
+    // 检查是否是真正的原生 App 环境（不是 Web 开发环境）
+    // 在 Web 开发环境中（http://localhost），即使有 Capacitor 对象，StatusBar 插件也不可用
+    const isRealCapacitorApp = isCapacitorApp() && 
+      window.location.protocol === 'capacitor:';
+    
+    if (statusBarModule && isRealCapacitorApp) {
+      try {
+        const { StatusBar, Style } = statusBarModule;
+        // 初始化状态栏
+        // 设置为 Light 样式（深色文字），背景色为浅色
+        StatusBar.setStyle({ style: Style.Light }).catch(() => {
+          // 静默失败，可能是 Web 环境
+        });
+        StatusBar.setBackgroundColor({ color: '#409eff' }).catch(() => {
+          // 静默失败，可能是 Web 环境
+        });
+        // 设置状态栏覆盖模式，让内容可以延伸到状态栏下方
+        StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {
+          // 静默失败，可能是 Web 环境
+        });
+        
+        // 获取状态栏高度并设置 CSS 变量（仅移动端，桌面端为 0）
+        // 注意：StatusBar 插件可能没有 getInfo，使用默认值
+        // Android 设备通常状态栏高度为 24-48px，华为设备通常为 24px
+        // 桌面端始终为 0，移动端才设置高度
+        const isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const defaultStatusBarHeight = isMobile ? 24 : 0;
+        document.documentElement.style.setProperty('--status-bar-height', `${defaultStatusBarHeight}px`);
+        
+        // 尝试使用 window 对象获取状态栏高度（仅移动端）
+        if (isMobile && typeof (window as any).devicePixelRatio !== 'undefined') {
+          // 某些设备可以通过 screen 对象获取
+          try {
+            const screenHeight = window.screen.height;
+            const windowHeight = window.innerHeight;
+            const statusBarHeight = Math.max(0, screenHeight - windowHeight - 60); // 60 是 header 高度
+            if (statusBarHeight > 0 && statusBarHeight < 100) {
+              document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
+            }
+          } catch (e) {
+            // 忽略错误，使用默认值
           }
-        } catch (e) {
-          // 忽略错误，使用默认值
         }
+      } catch (error) {
+        // Web 环境中 StatusBar 插件不可用，静默失败
+        // 不输出警告，避免在开发环境中产生噪音
+        // Web 环境设置状态栏高度为 0
+        document.documentElement.style.setProperty('--status-bar-height', '0px');
       }
+    } else {
+      // 非 Capacitor 环境（Web 浏览器）
+      // 在移动设备视图中，设置模拟状态栏高度以便开发预览
+      // 注意：这只是为了开发时预览效果，真正的 App 中会使用实际的状态栏高度
+      const isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const simulatedStatusBarHeight = isMobile ? 24 : 0; // 模拟 Android 状态栏高度
+      document.documentElement.style.setProperty('--status-bar-height', `${simulatedStatusBarHeight}px`);
+      
+      // 监听窗口大小变化，动态更新状态栏高度（用于响应式开发）
+      const updateStatusBarHeight = () => {
+        const currentIsMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const height = currentIsMobile ? 24 : 0;
+        document.documentElement.style.setProperty('--status-bar-height', `${height}px`);
+      };
+      
+      window.addEventListener('resize', updateStatusBarHeight);
     }
 
     if (splashScreenModule) {

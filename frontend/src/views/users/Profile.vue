@@ -112,6 +112,7 @@
 
       <el-divider />
 
+      <!-- 版本信息（仅 Capacitor App 环境显示） -->
       <el-card shadow="never" v-if="isCapacitor">
         <template #header>
           <h4>版本信息</h4>
@@ -226,16 +227,23 @@ const loadCurrentVersion = async () => {
 };
 
 // 检查更新
-const handleCheckUpdate = async () => {
-  checkingUpdate.value = true;
-  try {
-    await checkForUpdate(true);
-  } catch (error) {
-    console.error('检查更新失败:', error);
-  } finally {
-    checkingUpdate.value = false;
-  }
-};
+    const handleCheckUpdate = async () => {
+      // 只在 Capacitor 环境中检查更新
+      if (!isCapacitor) {
+        ElMessage.warning('此功能仅在移动 App 中可用');
+        return;
+      }
+      
+      checkingUpdate.value = true;
+      try {
+        await checkForUpdate(true);
+      } catch (error) {
+        console.error('检查更新失败:', error);
+        ElMessage.error('检查更新失败，请稍后重试');
+      } finally {
+        checkingUpdate.value = false;
+      }
+    };
 
 // 通知支持状态
 const notificationSupportInfo = computed(() => {

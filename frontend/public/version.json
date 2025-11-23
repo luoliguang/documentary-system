@@ -1,8 +1,8 @@
 {
-  "version": "1.0.2",
-  "versionCode": 3,
+  "version": "1.0.3",
+  "versionCode": 4,
   "downloadUrl": "https://order.fangdutex.cn/download/app-release.apk",
-  "releaseNotes": "• 优化移动端状态栏适配，解决内容被遮挡问题<br/>• 新增后台通知功能，即使 App 在后台也能收到通知<br/>• 优化订单列表卡片显示效果<br/>• 修复已知问题，提升系统稳定性",
+  "releaseNotes": "• 优化移动端状态栏适配，解决内容被遮挡问题<br/>• 新增后台通知功能，即使 App 在后台也能收到通知<br/>• 修复版本检查功能，确保在真正的 App 环境中检查更新<br/>• 修复已知问题，提升系统稳定性",
   "forceUpdate": false,
   "minSupportedVersion": "1.0.0"
 }

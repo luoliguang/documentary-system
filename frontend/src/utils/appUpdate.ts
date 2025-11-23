@@ -42,45 +42,51 @@ export function compareVersions(current: string, latest: string): number {
  * 获取当前 App 版本号
  */
 export async function getCurrentVersion(): Promise<string> {
-  if (isCapacitorApp()) {
-    try {
-      const { App } = await import('@capacitor/app');
-      const info = await App.getInfo();
-      return info.version || '1.0.0';
-    } catch (error) {
-      console.error('获取 App 版本失败:', error);
-      return '1.0.0';
-    }
+  // 只在 Capacitor 环境中尝试获取版本
+  if (!isCapacitorApp()) {
+    // Web 环境直接返回默认版本，不尝试调用 Capacitor API
+    return '1.0.0';
   }
   
-  // Web 环境返回 package.json 中的版本
-  return '1.0.0';
+  try {
+    const { App } = await import('@capacitor/app');
+    const info = await App.getInfo();
+    return info.version || '1.0.0';
+  } catch (error) {
+    // 如果获取失败（可能是 Web 环境），静默返回默认版本
+    // 不输出错误日志，避免在 Web 环境中产生噪音
+    return '1.0.0';
+  }
 }
 
 /**
  * 从服务器获取最新版本信息
  */
 export async function fetchLatestVersion(): Promise<VersionInfo | null> {
+  // 只在真正的 Capacitor App 环境中检查更新
+  // 检查是否是真正的原生 App 环境（不是 Web 开发环境）
+  // 在 Web 开发环境中（localhost），不应该尝试从远程服务器获取版本信息
+  const isRealCapacitorApp = isCapacitorApp() && 
+    window.location.protocol === 'capacitor:';
+  
+  if (!isRealCapacitorApp) {
+    // Web 开发环境或非 Capacitor 环境，不检查更新
+    return null;
+  }
+  
   try {
     // 从服务器获取版本信息
-    let serverUrl: string;
-    if (isCapacitorApp()) {
-      // Capacitor 环境：从配置获取服务器地址
-      const origin = window.location.origin;
-      if (origin.includes('capacitor://') || origin.includes('localhost')) {
-        serverUrl = 'https://order.fangdutex.cn';
-      } else {
-        serverUrl = origin;
-      }
-    } else {
-      serverUrl = window.location.origin;
-    }
+    // 在真正的 App 环境中，使用生产服务器
+    const serverUrl = 'https://order.fangdutex.cn';
     
     const response = await fetch(`${serverUrl}/version.json?t=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Cache-Control': 'no-cache',
       },
+      // 添加 mode 和 credentials 选项，避免 CORS 问题
+      mode: 'cors',
+      credentials: 'omit',
     });
     
     if (!response.ok) {
@@ -90,7 +96,12 @@ export async function fetchLatestVersion(): Promise<VersionInfo | null> {
     const data = await response.json();
     return data as VersionInfo;
   } catch (error) {
-    console.error('获取版本信息失败:', error);
+    // 网络错误时，静默失败
+    // 不输出错误日志，避免在开发环境中产生噪音
+    // 只在真正的 App 环境中才输出警告
+    if (isRealCapacitorApp) {
+      console.warn('获取版本信息失败（可能是网络问题）:', error);
+    }
     return null;
   }
 }
@@ -101,6 +112,20 @@ export async function fetchLatestVersion(): Promise<VersionInfo | null> {
  * @returns 是否有更新
  */
 export async function checkForUpdate(showNoUpdateMessage = false): Promise<boolean> {
+  // 只在真正的 Capacitor App 环境中检查更新
+  // 检查是否是真正的原生 App 环境（不是 Web 开发环境）
+  // 在 Web 开发环境中（http://localhost），不应该尝试检查更新
+  const isRealCapacitorApp = isCapacitorApp() && 
+    window.location.protocol === 'capacitor:';
+  
+  if (!isRealCapacitorApp) {
+    // Web 开发环境或非 Capacitor 环境，不检查更新
+    if (showNoUpdateMessage) {
+      ElMessage.info('此功能仅在移动 App 中可用');
+    }
+    return false;
+  }
+  
   try {
     const currentVersion = await getCurrentVersion();
     const latestVersionInfo = await fetchLatestVersion();

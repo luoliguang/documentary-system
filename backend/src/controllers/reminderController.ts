@@ -72,15 +72,32 @@ export const createDeliveryReminder = async (
       }
     }
 
-    // 获取订单信息用于通知
+    // 获取订单信息用于通知（包括分配信息）
     const orderInfoResult = await pool.query(
-      `SELECT o.order_number, o.customer_order_number, u.company_name, u.contact_name
+      `SELECT 
+         o.order_number, 
+         o.customer_order_number, 
+         o.assigned_to,
+         u.company_name, 
+         u.contact_name,
+         pm.id as production_manager_id,
+         pm.username as production_manager_name
        FROM orders o
        LEFT JOIN users u ON o.customer_id = u.id
+       LEFT JOIN users pm ON o.assigned_to = pm.id
        WHERE o.id = $1`,
       [order_id]
     );
     const orderInfo = orderInfoResult.rows[0];
+    
+    // 查询订单的所有分配记录（可能有多个生产跟单）
+    const assignmentResult = await pool.query(
+      `SELECT DISTINCT production_manager_id 
+       FROM order_assignments 
+       WHERE order_id = $1 AND production_manager_id IS NOT NULL`,
+      [order_id]
+    );
+    const assignedProductionManagerIds = assignmentResult.rows.map(row => row.production_manager_id);
 
     // 创建催货记录
     const result = await pool.query(
@@ -90,65 +107,98 @@ export const createDeliveryReminder = async (
       [order_id, user.userId, reminder_type, message || null]
     );
 
-    // 向所有管理员和客服发送催单通知
+    // 发送催单通知
+    // 逻辑：
+    // 1. 如果订单已分配给生产跟单，通知：生产跟单 + 管理员/客服（有分配权限的）
+    // 2. 如果订单未分配，只通知：管理员/客服（有分配权限的）
+    // 3. 管理员/客服始终可以收到催单通知
     try {
-      // 获取管理员和客服的用户ID
+      const reminderTypeText = reminder_type === 'urgent' ? '紧急催单' : '催单';
+      const { emitNotificationCreated } = await import('../websocket/emitter.js');
+      const { createNotification } = await import('../services/notificationService.js');
+      
+      // 获取所有有分配订单权限的用户（管理员和客服）
       const adminAndSupportResult = await pool.query(
-        "SELECT id FROM users WHERE role IN ('admin', 'customer_service') AND is_active = true",
+        `SELECT id, role 
+         FROM users 
+         WHERE role IN ('admin', 'customer_service') 
+           AND is_active = true`,
         []
       );
-      const adminAndSupportUserIds = adminAndSupportResult.rows.map((row) => row.id);
+      const adminAndSupportUsers = adminAndSupportResult.rows;
       
-      if (adminAndSupportUserIds.length > 0) {
-        const reminderTypeText = reminder_type === 'urgent' ? '紧急催单' : '催单';
+      // 通知用户列表
+      const usersToNotify: Array<{ id: number; role: string }> = [];
+      
+      // 1. 始终通知管理员和客服（有分配权限的）
+      usersToNotify.push(...adminAndSupportUsers);
+      
+      // 2. 如果订单已分配，也通知生产跟单
+      if (orderInfo.assigned_to || assignedProductionManagerIds.length > 0) {
+        // 获取所有被分配的生产跟单
+        const allAssignedPmIds = new Set<number>();
         
-        // 为每个用户创建个性化通知（根据用户角色显示不同的订单编号）
-        const { emitNotificationCreated } = await import('../websocket/emitter.js');
-        const { createNotification } = await import('../services/notificationService.js');
+        // 添加主分配的生产跟单
+        if (orderInfo.assigned_to) {
+          allAssignedPmIds.add(orderInfo.assigned_to);
+        }
         
-        for (const userId of adminAndSupportUserIds) {
-          try {
-            // 获取接收通知的用户角色
-            const userResult = await pool.query(
-              'SELECT role FROM users WHERE id = $1',
-              [userId]
-            );
-            const recipientRole = userResult.rows[0]?.role;
-            
-            // 根据接收者角色生成订单编号显示
-            const displayNumber = getOrderDisplayNumberSimple(
-              {
-                order_number: orderInfo.order_number,
-                customer_order_number: orderInfo.customer_order_number,
-              },
-              recipientRole
-            );
-            
-            const title = `${reminderTypeText}：${displayNumber || '订单'}`;
-            const orderInfoText = getOrderDisplayInfo(
-              {
-                order_number: orderInfo.order_number,
-                customer_order_number: orderInfo.customer_order_number,
-              },
-              recipientRole
-            );
-            const content = message
-              ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单进行了${reminderTypeText}。\n${orderInfoText}\n催单消息：${message}`
-              : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单进行了${reminderTypeText}。\n${orderInfoText}`;
+        // 添加所有分配记录中的生产跟单
+        assignedProductionManagerIds.forEach((pmId: number) => {
+          allAssignedPmIds.add(pmId);
+        });
+        
+        // 查询这些生产跟单的信息
+        if (allAssignedPmIds.size > 0) {
+          const pmIdsArray = Array.from(allAssignedPmIds);
+          const pmResult = await pool.query(
+            `SELECT id, role 
+             FROM users 
+             WHERE id = ANY($1::int[]) 
+               AND role = 'production_manager' 
+               AND is_active = true`,
+            [pmIdsArray]
+          );
+          usersToNotify.push(...pmResult.rows);
+        }
+      }
+      
+      // 为每个用户创建个性化通知
+      for (const user of usersToNotify) {
+        try {
+          // 根据接收者角色生成订单编号显示
+          const displayNumber = getOrderDisplayNumberSimple(
+            {
+              order_number: orderInfo.order_number,
+              customer_order_number: orderInfo.customer_order_number,
+            },
+            user.role
+          );
+          
+          const title = `${reminderTypeText}：${displayNumber || '订单'}`;
+          const orderInfoText = getOrderDisplayInfo(
+            {
+              order_number: orderInfo.order_number,
+              customer_order_number: orderInfo.customer_order_number,
+            },
+            user.role
+          );
+          const content = message
+            ? `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单进行了${reminderTypeText}。\n${orderInfoText}\n催单消息：${message}`
+            : `客户${orderInfo.company_name || orderInfo.contact_name || '客户'}对订单进行了${reminderTypeText}。\n${orderInfoText}`;
 
-            const createdNotification = await createNotification({
-              user_id: userId,
-              type: 'reminder',
-              title,
-              content,
-              related_id: order_id,
-              related_type: 'order',
-            });
-            
-            emitNotificationCreated(createdNotification);
-          } catch (notificationError) {
-            console.error('创建催单通知失败:', notificationError);
-          }
+          const createdNotification = await createNotification({
+            user_id: user.id,
+            type: 'reminder',
+            title,
+            content,
+            related_id: order_id,
+            related_type: 'order',
+          });
+          
+          emitNotificationCreated(createdNotification);
+        } catch (notificationError) {
+          console.error('创建催单通知失败:', notificationError);
         }
       }
     } catch (notificationError) {

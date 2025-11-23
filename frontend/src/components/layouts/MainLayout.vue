@@ -335,10 +335,7 @@ onUnmounted(() => {
   z-index: 1000;
   height: 60px;
   flex-shrink: 0;
-  /* 移动端状态栏适配：使用 CSS 变量动态设置 */
-  padding-top: var(--status-bar-height, 0px);
-  height: calc(60px + var(--status-bar-height, 0px));
-  min-height: calc(60px + var(--status-bar-height, 0px));
+  /* 桌面端不添加状态栏高度，移动端通过媒体查询添加 */
 }
 
 .header-left {
@@ -408,9 +405,7 @@ onUnmounted(() => {
   height: calc(100vh - 60px);
   overflow: hidden;
   display: flex;
-  /* 移动端状态栏适配：考虑安全区域 */
-  margin-top: calc(60px + var(--status-bar-height, 0px));
-  height: calc(100vh - 60px - var(--status-bar-height, 0px));
+  /* 桌面端不添加状态栏高度，移动端通过媒体查询添加 */
 }
 
 .layout-aside {
@@ -418,12 +413,13 @@ onUnmounted(() => {
   border-right: 1px solid #e4e7ed;
   position: fixed;
   left: 0;
-  top: calc(60px + var(--status-bar-height, 0px));
+  top: 60px;
   bottom: 0;
   width: 200px;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 999;
+  /* 桌面端不添加状态栏高度，移动端通过媒体查询添加 */
 }
 
 .desktop-aside {
@@ -457,6 +453,10 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .layout-header {
     padding: 0 15px;
+    /* 移动端 Header 适配状态栏 */
+    padding-top: var(--status-bar-height, 0px);
+    height: calc(60px + var(--status-bar-height, 0px));
+    min-height: calc(60px + var(--status-bar-height, 0px));
   }
 
   .menu-toggle-btn {
@@ -481,13 +481,6 @@ onUnmounted(() => {
   .layout-container {
     margin-top: calc(60px + var(--status-bar-height, 0px));
     height: calc(100vh - 60px - var(--status-bar-height, 0px));
-  }
-  
-  /* 移动端 Header 适配状态栏 */
-  .layout-header {
-    padding-top: var(--status-bar-height, 0px);
-    height: calc(60px + var(--status-bar-height, 0px));
-    min-height: calc(60px + var(--status-bar-height, 0px));
   }
 
   /* 移动端隐藏桌面侧边栏 */
