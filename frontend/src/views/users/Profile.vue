@@ -112,6 +112,27 @@
 
       <el-divider />
 
+      <el-card shadow="never" v-if="isCapacitor">
+        <template #header>
+          <h4>版本信息</h4>
+        </template>
+        <el-form label-width="120px" style="max-width: 600px">
+          <el-form-item label="当前版本">
+            <el-input :value="currentVersion" disabled style="width: 200px" />
+            <el-button
+              type="primary"
+              style="margin-left: 10px"
+              :loading="checkingUpdate"
+              @click="handleCheckUpdate"
+            >
+              检查更新
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <el-divider v-if="isCapacitor" />
+
       <el-card shadow="never">
         <template #header>
           <h4>修改密码</h4>
@@ -169,6 +190,7 @@ import {
   getNotificationPermission,
   isNotificationSupported 
 } from '../../utils/device';
+import { checkForUpdate, getCurrentVersion } from '../../utils/appUpdate';
 
 const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
@@ -191,6 +213,29 @@ const isCapacitor = computed(() => isCapacitorApp());
 
 // 浏览器通知权限状态
 const notificationPermission = computed(() => getNotificationPermission());
+
+// 版本信息
+const currentVersion = ref('1.0.0');
+const checkingUpdate = ref(false);
+
+// 获取当前版本
+const loadCurrentVersion = async () => {
+  if (isCapacitor.value) {
+    currentVersion.value = await getCurrentVersion();
+  }
+};
+
+// 检查更新
+const handleCheckUpdate = async () => {
+  checkingUpdate.value = true;
+  try {
+    await checkForUpdate(true);
+  } catch (error) {
+    console.error('检查更新失败:', error);
+  } finally {
+    checkingUpdate.value = false;
+  }
+};
 
 // 通知支持状态
 const notificationSupportInfo = computed(() => {
@@ -409,7 +454,11 @@ watch(() => authStore.notificationEnabled, (newVal) => {
   notificationEnabled.value = newVal;
 });
 
-onMounted(() => {
+onMounted(async () => {
+  // 加载当前版本信息
+  if (isCapacitor.value) {
+    await loadCurrentVersion();
+  }
   loadProfile();
   // 初始化通知开关状态
   notificationEnabled.value = authStore.notificationEnabled;

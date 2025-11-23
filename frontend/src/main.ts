@@ -99,6 +99,27 @@ if (isCapacitorApp()) {
       StatusBar.setBackgroundColor({ color: '#409eff' });
       // 设置状态栏覆盖模式，让内容可以延伸到状态栏下方
       StatusBar.setOverlaysWebView({ overlay: false });
+      
+      // 获取状态栏高度并设置 CSS 变量（用于 Android 设备兼容）
+      // 注意：StatusBar 插件可能没有 getInfo，使用默认值
+      // Android 设备通常状态栏高度为 24-48px，华为设备通常为 24px
+      const defaultStatusBarHeight = isCapacitorApp() ? 24 : 0;
+      document.documentElement.style.setProperty('--status-bar-height', `${defaultStatusBarHeight}px`);
+      
+      // 尝试使用 window 对象获取状态栏高度（如果可用）
+      if (typeof (window as any).devicePixelRatio !== 'undefined') {
+        // 某些设备可以通过 screen 对象获取
+        try {
+          const screenHeight = window.screen.height;
+          const windowHeight = window.innerHeight;
+          const statusBarHeight = Math.max(0, screenHeight - windowHeight - 60); // 60 是 header 高度
+          if (statusBarHeight > 0 && statusBarHeight < 100) {
+            document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
+          }
+        } catch (e) {
+          // 忽略错误，使用默认值
+        }
+      }
     }
 
     if (splashScreenModule) {

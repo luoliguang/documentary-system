@@ -335,10 +335,10 @@ onUnmounted(() => {
   z-index: 1000;
   height: 60px;
   flex-shrink: 0;
-  /* 移动端状态栏适配：添加顶部安全区域 */
-  padding-top: env(safe-area-inset-top, 0px);
-  height: calc(60px + env(safe-area-inset-top, 0px));
-  min-height: calc(60px + env(safe-area-inset-top, 0px));
+  /* 移动端状态栏适配：使用 CSS 变量动态设置 */
+  padding-top: var(--status-bar-height, 0px);
+  height: calc(60px + var(--status-bar-height, 0px));
+  min-height: calc(60px + var(--status-bar-height, 0px));
 }
 
 .header-left {
@@ -409,8 +409,8 @@ onUnmounted(() => {
   overflow: hidden;
   display: flex;
   /* 移动端状态栏适配：考虑安全区域 */
-  margin-top: calc(60px + env(safe-area-inset-top));
-  height: calc(100vh - 60px - env(safe-area-inset-top));
+  margin-top: calc(60px + var(--status-bar-height, 0px));
+  height: calc(100vh - 60px - var(--status-bar-height, 0px));
 }
 
 .layout-aside {
@@ -418,7 +418,7 @@ onUnmounted(() => {
   border-right: 1px solid #e4e7ed;
   position: fixed;
   left: 0;
-  top: calc(60px + env(safe-area-inset-top, 0px));
+  top: calc(60px + var(--status-bar-height, 0px));
   bottom: 0;
   width: 200px;
   overflow-y: auto;
@@ -479,15 +479,15 @@ onUnmounted(() => {
 
   /* 移动端布局容器调整 */
   .layout-container {
-    margin-top: calc(60px + env(safe-area-inset-top, 0px));
-    height: calc(100vh - 60px - env(safe-area-inset-top, 0px));
+    margin-top: calc(60px + var(--status-bar-height, 0px));
+    height: calc(100vh - 60px - var(--status-bar-height, 0px));
   }
   
   /* 移动端 Header 适配状态栏 */
   .layout-header {
-    padding-top: env(safe-area-inset-top, 0px);
-    height: calc(60px + env(safe-area-inset-top, 0px));
-    min-height: calc(60px + env(safe-area-inset-top, 0px));
+    padding-top: var(--status-bar-height, 0px);
+    height: calc(60px + var(--status-bar-height, 0px));
+    min-height: calc(60px + var(--status-bar-height, 0px));
   }
 
   /* 移动端隐藏桌面侧边栏 */

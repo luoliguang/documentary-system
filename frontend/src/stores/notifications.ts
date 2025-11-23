@@ -6,6 +6,9 @@ import { connectWebSocket } from '../utils/websocket';
 import { useAuthStore } from './auth';
 import { isCapacitorApp, isNotificationSupported } from '../utils/device';
 
+// 缓存已显示的通知 ID，避免重复通知
+const shownNotificationIds = new Set<number>();
+
 export const useNotificationsStore = defineStore('notifications', () => {
   const unreadCount = ref(0);
   const notifications = ref<Notification[]>([]);
@@ -44,12 +47,16 @@ export const useNotificationsStore = defineStore('notifications', () => {
         const newNotifications = latestNotificationsResponse.notifications.slice(0, newCount - previousCount);
         for (const notification of newNotifications.reverse()) {
           // 检查是否已经显示过（避免重复通知）
-          const alreadyShown = notifications.value.some(n => n.id === notification.id);
+          const alreadyShown = notifications.value.some(n => n.id === notification.id) || shownNotificationIds.has(notification.id);
           if (!alreadyShown) {
             // 添加到通知列表顶部
             notifications.value.unshift(notification);
+            // 标记为已显示
+            shownNotificationIds.add(notification.id);
             // 显示通知（即使在后台也会显示）
-            showDesktopNotification(notification);
+            showDesktopNotification(notification).catch((error) => {
+              console.error('显示通知失败:', error);
+            });
           }
         }
 
@@ -135,8 +142,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
   };
 
   /**
-   * 开始轮询未读数量（每30秒）
+   * 开始轮询未读数量
    * 注意：即使在 App 后台，轮询也会继续（但可能被系统限制）
+   * 华为设备建议使用更短的轮询间隔以确保及时收到通知
    */
   const startPolling = () => {
     // 先立即获取一次
@@ -148,9 +156,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     // 设置新的轮询（即使在后台也会继续）
+    // 华为设备优化：使用 15 秒轮询间隔，确保及时收到通知
+    const pollingIntervalMs = isCapacitorApp() ? 15000 : 30000; // App 环境 15 秒，Web 环境 30 秒
     pollingInterval.value = setInterval(() => {
       fetchUnreadCount();
-    }, 30000); // 30秒
+    }, pollingIntervalMs);
   };
 
   /**
@@ -275,13 +285,26 @@ export const useNotificationsStore = defineStore('notifications', () => {
             fetchNotifications(lastFetchParams.value);
           }
 
-          // 桌面通知（检查开关和权限）
-          showDesktopNotification(notification);
+          // 检查是否已经显示过（避免重复通知）
+          if (!shownNotificationIds.has(notification.id)) {
+            // 标记为已显示
+            shownNotificationIds.add(notification.id);
+            // 桌面通知（检查开关和权限）
+            // 立即显示通知，不等待
+            showDesktopNotification(notification).catch((error) => {
+              console.error('显示通知失败:', error);
+            });
+          }
         }
       }
     };
     
     connectWebSocket(notificationHandler);
+    
+    // 确保 WebSocket 连接后立即检查一次未读数量（兜底机制）
+    setTimeout(() => {
+      fetchUnreadCount();
+    }, 2000);
   };
 
   /**
@@ -335,10 +358,17 @@ export const useNotificationsStore = defineStore('notifications', () => {
               relatedType: notification.related_type,
               relatedId: notification.related_id,
             },
-            // 设置优先级，确保在后台也能显示
-            priority: 1,
-            // 设置通知渠道（Android）
+            // 设置优先级，确保在后台也能显示（Android 需要高优先级）
+            priority: 1, // 高优先级
+            // 设置通知渠道（Android 8.0+）
             channelId: 'default',
+            // Android 特定设置
+            smallIcon: 'ic_stat_icon_config_sample',
+            iconColor: '#409eff',
+            // 确保通知在锁屏上显示
+            visibility: 1, // Public
+            // 震动（如果设备支持）
+            vibrate: true,
           }]
         });
       } catch (error) {

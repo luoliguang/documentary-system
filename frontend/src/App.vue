@@ -5,6 +5,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from './stores/auth';
+import { isCapacitorApp } from './utils/device';
+import { checkForUpdate } from './utils/appUpdate';
 
 const authStore = useAuthStore();
 
@@ -63,6 +65,15 @@ onMounted(async () => {
         console.log('Service Worker registration failed:', error);
       });
   }
+
+  // App 启动时检查更新（仅 Capacitor 环境，延迟 3 秒避免影响启动速度）
+  if (isCapacitorApp() && authStore.isAuthenticated) {
+    setTimeout(() => {
+      checkForUpdate(false).catch(() => {
+        // 静默失败，不影响用户体验
+      });
+    }, 3000);
+  }
 });
 
 onUnmounted(() => {
@@ -82,18 +93,11 @@ onUnmounted(() => {
 #app {
   width: 100%;
   min-height: 100vh;
-  /* 移动端安全区域适配 */
-  padding-top: env(safe-area-inset-top);
+  /* 移动端安全区域适配（底部和左右） */
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-}
-
-/* Capacitor 环境下的状态栏适配 */
-@supports (padding-top: env(safe-area-inset-top)) {
-  #app {
-    padding-top: max(env(safe-area-inset-top), 0px);
-  }
+  /* 顶部不添加 padding，由 header 处理状态栏高度 */
 }
 
 body {
