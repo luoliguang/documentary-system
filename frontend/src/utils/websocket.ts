@@ -6,16 +6,51 @@ const RECONNECT_DELAY = 3000; // 重连延迟（毫秒）
 const messageHandlers: Set<(data: any) => void> = new Set();
 
 /**
+ * 检测是否在Capacitor环境中
+ */
+function isCapacitorApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!(window as any).Capacitor;
+}
+
+/**
+ * 获取服务器基础URL（用于Capacitor环境）
+ */
+function getServerBaseUrl(): string {
+  if (isCapacitorApp()) {
+    // Capacitor 会将 window.location 重写为 server.url 的值
+    const origin = window.location.origin;
+    // 如果 origin 是 capacitor://localhost（默认值），使用生产环境地址
+    if (origin.includes('capacitor://') || origin.includes('localhost')) {
+      return 'https://order.fangdutex.cn';
+    }
+    return origin;
+  }
+  // Web 环境使用当前域名
+  return `${window.location.protocol}//${window.location.host}`;
+}
+
+/**
  * 构建WebSocket URL
  * 优先级：
  * 1. 环境变量 VITE_WS_URL（完整URL）
- * 2. 环境变量 VITE_WS_PORT + 当前协议和主机
- * 3. 自动检测：生产环境（HTTPS）使用标准端口（443），开发环境使用3007
+ * 2. Capacitor环境：从server.url获取，转换为wss://
+ * 3. 环境变量 VITE_WS_PORT + 当前协议和主机
+ * 4. 自动检测：生产环境（HTTPS）使用标准端口（443），开发环境使用3007
  */
 function buildWebSocketUrl(): string {
   // 优先使用完整的环境变量URL
   if (import.meta.env.VITE_WS_URL) {
     return import.meta.env.VITE_WS_URL;
+  }
+
+  // Capacitor 环境：使用配置的服务器地址
+  if (isCapacitorApp()) {
+    const serverUrl = getServerBaseUrl();
+    // 将 http/https 转换为 ws/wss
+    const wsProtocol = serverUrl.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = serverUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    return `${wsProtocol}//${wsHost}/ws`;
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

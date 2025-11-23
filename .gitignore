@@ -45,6 +45,54 @@ out/
 .nuxt/
 .vite/
 
+# Android 构建产物（本地打包，不上传服务器）
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/capacitor-cordova-android-plugins/build/
+frontend/android/local.properties
+frontend/android/.idea/
+*.apk
+*.aab
+*.apks
+*.keystore
+*.jks
+frontend/android/app/release/
+frontend/android/app/debug/
+
+# iOS 构建产物（本地打包，不上传服务器）
+frontend/ios/build/
+frontend/ios/Pods/
+frontend/ios/.symlinks/
+frontend/ios/App.xcworkspace/xcuserdata/
+frontend/ios/App.xcodeproj/xcuserdata/
+*.ipa
+*.xcarchive
+
+# Android 构建产物（本地打包，不上传）
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/capacitor-cordova-android-plugins/build/
+frontend/android/local.properties
+frontend/android/.idea/
+*.apk
+*.aab
+*.apks
+*.keystore
+*.jks
+frontend/android/app/release/
+frontend/android/app/debug/
+
+# iOS 构建产物（本地打包，不上传）
+frontend/ios/build/
+frontend/ios/Pods/
+frontend/ios/.symlinks/
+frontend/ios/App.xcworkspace/xcuserdata/
+frontend/ios/App.xcodeproj/xcuserdata/
+*.ipa
+*.xcarchive
+
 # ============================================
 # 日志文件
 # ============================================
@@ -302,6 +350,7 @@ secrets/
 .local/
 .localenv
 .envrc
+# 临时文档（不提交）
 database.dbml
 REALTIME_SETUP.md
 NOTIFICATION_SETTINGS.md
@@ -310,5 +359,5 @@ database/migrations/README_COMPANY_MIGRATION.md
 deploy/websocket-debug.md
 database/README_ORDER_ACTIVITIES_MIGRATION.md
 docs/CUSTOMER_CODE_EXPLANATION.md
-CURSOR_RULES.md
 CURSOR_SOUL.md
+CURSOR_RULES.md

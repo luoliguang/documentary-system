@@ -1,9 +1,34 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { ElMessage } from 'element-plus';
 import router from '../router';
+import { isCapacitorApp } from './device';
+
+// 获取 API 基础地址
+const getApiBaseURL = (): string => {
+  // 如果是 Capacitor 环境（已打包成 App）
+  if (isCapacitorApp()) {
+    // Capacitor 会将 window.location 重写为 server.url 的值
+    // 所以可以直接使用 window.location.origin
+    const origin = window.location.origin;
+    // 如果 origin 是 capacitor://localhost（默认值），使用生产环境地址
+    if (origin.includes('capacitor://') || origin.includes('localhost')) {
+      return 'https://order.fangdutex.cn/api';
+    }
+    return `${origin}/api`;
+  }
+  
+  // Web 环境：开发时使用代理，生产时使用完整地址
+  if (import.meta.env.DEV) {
+    // 开发环境使用相对路径（Vite 代理会处理）
+    return '/api';
+  }
+  
+  // 生产环境 Web：使用完整地址
+  return import.meta.env.VITE_API_BASE_URL || 'https://order.fangdutex.cn/api';
+};
 
 const api: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: getApiBaseURL(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

@@ -1,6 +1,37 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3006';
+/**
+ * 获取API基础URL
+ */
+function getApiBaseURL(): string {
+  // 检测是否在Capacitor环境中
+  const isCapacitor = typeof window !== 'undefined' && !!(window as any).Capacitor;
+  
+  if (isCapacitor) {
+    // Capacitor 会将 window.location 重写为 server.url 的值
+    const origin = window.location.origin;
+    // 如果 origin 是 capacitor://localhost（默认值），使用生产环境地址
+    if (origin.includes('capacitor://') || origin.includes('localhost')) {
+      return 'https://order.fangdutex.cn/api';
+    }
+    return `${origin}/api`;
+  }
+  
+  // Web 环境
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // 开发环境使用本地地址
+  if (import.meta.env.DEV) {
+    return 'http://localhost:3006/api';
+  }
+  
+  // 生产环境Web
+  return 'https://order.fangdutex.cn/api';
+}
+
+const API_BASE_URL = getApiBaseURL();
 
 // 获取token的辅助函数
 function getToken(): string | null {
