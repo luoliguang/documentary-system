@@ -82,6 +82,18 @@ onUnmounted(() => {
 #app {
   width: 100%;
   min-height: 100vh;
+  /* 移动端安全区域适配 */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Capacitor 环境下的状态栏适配 */
+@supports (padding-top: env(safe-area-inset-top)) {
+  #app {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
 }
 
 body {

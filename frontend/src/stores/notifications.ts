@@ -28,19 +28,35 @@ export const useNotificationsStore = defineStore('notifications', () => {
     try {
       const previousCount = unreadCount.value;
       const response = await notificationsApi.getUnreadCount();
-      unreadCount.value = response.count;
+      const newCount = response.count;
+      unreadCount.value = newCount;
 
-      // 如果未读数量增加，自动刷新最新通知列表
-      if (
-        response.count > previousCount &&
-        (lastFetchParams.value || notifications.value.length > 0)
-      ) {
-        const params =
-          lastFetchParams.value || {
-            page: 1,
-            pageSize: 20,
-          };
-        await fetchNotifications(params);
+      // 如果未读数量增加，获取最新通知并显示
+      if (newCount > previousCount) {
+        // 获取最新的未读通知
+        const latestNotificationsResponse = await notificationsApi.getNotifications({
+          page: 1,
+          pageSize: newCount - previousCount,
+          is_read: false,
+        });
+
+        // 显示新通知（从新到旧）
+        const newNotifications = latestNotificationsResponse.notifications.slice(0, newCount - previousCount);
+        for (const notification of newNotifications.reverse()) {
+          // 检查是否已经显示过（避免重复通知）
+          const alreadyShown = notifications.value.some(n => n.id === notification.id);
+          if (!alreadyShown) {
+            // 添加到通知列表顶部
+            notifications.value.unshift(notification);
+            // 显示通知（即使在后台也会显示）
+            showDesktopNotification(notification);
+          }
+        }
+
+        // 如果当前正在查看通知列表，自动刷新
+        if (lastFetchParams.value) {
+          await fetchNotifications(lastFetchParams.value);
+        }
       }
     } catch (error) {
       console.error('获取未读通知数量失败:', error);
@@ -120,6 +136,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   /**
    * 开始轮询未读数量（每30秒）
+   * 注意：即使在 App 后台，轮询也会继续（但可能被系统限制）
    */
   const startPolling = () => {
     // 先立即获取一次
@@ -130,7 +147,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
       clearInterval(pollingInterval.value);
     }
 
-    // 设置新的轮询
+    // 设置新的轮询（即使在后台也会继续）
     pollingInterval.value = setInterval(() => {
       fetchUnreadCount();
     }, 30000); // 30秒
@@ -304,14 +321,24 @@ export const useNotificationsStore = defineStore('notifications', () => {
           }
         }
 
-        // 显示本地通知
+        // 显示本地通知（即使在后台也会显示）
         await LocalNotifications.schedule({
           notifications: [{
             title: notification.title,
             body: notification.content || '',
             id: notification.id,
             sound: 'default',
-            badge: 1,
+            badge: unreadCount.value || 1,
+            // 添加额外数据，用于点击通知时跳转
+            extra: {
+              notificationId: notification.id,
+              relatedType: notification.related_type,
+              relatedId: notification.related_id,
+            },
+            // 设置优先级，确保在后台也能显示
+            priority: 1,
+            // 设置通知渠道（Android）
+            channelId: 'default',
           }]
         });
       } catch (error) {
