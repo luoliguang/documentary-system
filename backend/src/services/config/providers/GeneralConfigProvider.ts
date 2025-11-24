@@ -5,6 +5,7 @@ import type { ConfigProvider } from './ConfigProvider.js';
 
 const GENERAL_KEYS = new Set([
   CONFIG_KEYS.ROLES,
+  CONFIG_KEYS.CUSTOMER_ROLES,
   CONFIG_KEYS.ORDER_TYPES,
   CONFIG_KEYS.ORDER_STATUSES,
   CONFIG_KEYS.REMINDER_MIN_INTERVAL_HOURS,
@@ -18,6 +19,7 @@ const DEFAULTS: Record<string, any> = {
     { value: 'production_manager', label: '生产跟单' },
     { value: 'customer', label: '客户' },
   ],
+  [CONFIG_KEYS.CUSTOMER_ROLES]: ['customer'],
   [CONFIG_KEYS.ORDER_TYPES]: ORDER_TYPE_OPTIONS,
   [CONFIG_KEYS.ORDER_STATUSES]: ORDER_STATUS_OPTIONS,
   [CONFIG_KEYS.REMINDER_MIN_INTERVAL_HOURS]: 2,

@@ -16,6 +16,7 @@ export const CONFIG_KEYS = {
   ROLES: 'roles',
   ROLE_PERMISSIONS: 'role_permissions',
   CONFIG_PERMISSIONS: 'config_permissions',
+  CUSTOMER_ROLES: 'customer_roles',
   
   // 分配规则
   ASSIGNMENT_RULES: 'assignment_rules',

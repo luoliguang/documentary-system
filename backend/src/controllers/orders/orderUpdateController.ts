@@ -13,6 +13,7 @@ import { addOrderActivity } from '../../services/activityService.js';
 import { getOrderTypeLabel } from '../../constants/orderType.js';
 import { getOrderStatusLabel } from '../../constants/orderStatus.js';
 import { arraysEqualIgnoreOrder, objectArraysEqual } from '../../utils/arrayUtils.js';
+import { getCustomerRoleValues } from '../../utils/configHelpers.js';
 
 /**
  * 更新订单
@@ -180,9 +181,10 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
       const canUpdateField = await canUpdateOrderFieldByRole(user.role, 'customer_id');
       if (canUpdateField) {
         // 验证客户是否存在
+        const customerRoles = await getCustomerRoleValues();
         const customerResult = await pool.query(
-          'SELECT id, customer_code FROM users WHERE id = $1 AND role = $2',
-          [customer_id, 'customer']
+          'SELECT id, customer_code FROM users WHERE id = $1 AND role = ANY($2)',
+          [customer_id, customerRoles]
         );
         if (customerResult.rows.length === 0) {
           return res.status(400).json({ error: '客户不存在' });

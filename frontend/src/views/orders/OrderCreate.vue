@@ -615,6 +615,7 @@ const handleSubmit = async () => {
         // 只传递必要的字段，不传递company_id（后端会自动从customer_id获取）
         const { company_id, ...orderData } = form;
         await ordersApi.createOrder(orderData);
+        await customerCompaniesStore.refresh();
         ElMessage.success('订单创建成功');
         router.push('/');
       } catch (error: any) {

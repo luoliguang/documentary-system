@@ -12,6 +12,7 @@ import { ORDER_TYPE } from '../../constants/orderType.js';
 import { ErrorFactory } from '../../errors/AppError.js';
 import { asyncHandler } from '../../errors/errorHandler.js';
 import { addOrderActivity } from '../../services/activityService.js';
+import { getCustomerRoleValues } from '../../utils/configHelpers.js';
 
 /**
  * 创建订单（仅管理员）
@@ -64,9 +65,10 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
     throw ErrorFactory.orderAlreadyExists(order_number);
   }
 
+  const customerRoles = await getCustomerRoleValues();
   const customer = await pool.query(
-    'SELECT id, customer_code, company_id, company_name FROM users WHERE id = $1 AND role = $2',
-    [customer_id, 'customer']
+    'SELECT id, customer_code, company_id, company_name FROM users WHERE id = $1 AND role = ANY($2)',
+    [customer_id, customerRoles]
   );
   if (customer.rows.length === 0) {
     throw ErrorFactory.customerNotFound(customer_id);

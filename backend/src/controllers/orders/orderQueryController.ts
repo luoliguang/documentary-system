@@ -9,7 +9,7 @@ import { AuthRequest } from '../../middleware/auth.js';
 import { canAccessOrder, getProductionManagerOrderTypes, canViewOrderType } from '../../services/permissionService.js';
 import { ORDER_ASSIGNMENT_COLUMNS } from '../../services/orderAssignmentService.js';
 import { getOrderActivities } from '../../services/activityService.js';
-import { parsePaginationParams } from '../../utils/configHelpers.js';
+import { parsePaginationParams, getCustomerRoleValues } from '../../utils/configHelpers.js';
 
 /**
  * 获取订单列表（管理员查看所有，客户只能查看自己的）
@@ -488,10 +488,11 @@ export const getOrderStatusHistory = async (
 export const getCustomers = async (req: AuthRequest, res: Response) => {
   try {
     const { company_name, company_id, search } = req.query;
+    const customerRoles = await getCustomerRoleValues();
     
-    let whereConditions: string[] = ["u.role = 'customer'", "u.is_active = true"];
-    const params: any[] = [];
-    let paramIndex = 1;
+    let whereConditions: string[] = [`u.role = ANY($1)`, "u.is_active = true"];
+    const params: any[] = [customerRoles];
+    let paramIndex = 2;
 
     // 支持按公司ID查询（优先使用，更准确）
     if (company_id) {
@@ -538,10 +539,11 @@ export const getCustomers = async (req: AuthRequest, res: Response) => {
 export const getCustomerCompanies = async (req: AuthRequest, res: Response) => {
   try {
     const { search } = req.query;
+    const customerRoles = await getCustomerRoleValues();
     
     let whereConditions: string[] = [];
-    const params: any[] = [];
-    let paramIndex = 1;
+    const params: any[] = [customerRoles];
+    let paramIndex = 2;
 
     if (search) {
       whereConditions.push(`cc.company_name ILIKE $${paramIndex++}`);
@@ -557,10 +559,11 @@ export const getCustomerCompanies = async (req: AuthRequest, res: Response) => {
               COUNT(DISTINCT o.id) as order_count,
               cc.created_at, cc.updated_at
        FROM customer_companies cc
-       LEFT JOIN users u ON cc.id = u.company_id AND u.role = 'customer'
+       LEFT JOIN users u ON cc.id = u.company_id AND u.role = ANY($1)
        LEFT JOIN orders o ON cc.id = o.company_id
        ${whereClause}
        GROUP BY cc.id
+       HAVING COUNT(DISTINCT u.id) > 0 OR COUNT(DISTINCT o.id) > 0
        ORDER BY cc.company_name`,
       params
     );

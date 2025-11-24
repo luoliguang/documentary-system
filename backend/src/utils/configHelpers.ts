@@ -26,6 +26,22 @@ export async function getRoleOptions() {
 }
 
 /**
+ * 获取需要视为客户的角色列表
+ */
+export async function getCustomerRoleValues(): Promise<string[]> {
+  const configured = await configService.getConfig(CONFIG_KEYS.CUSTOMER_ROLES);
+  if (Array.isArray(configured)) {
+    const normalized = configured
+      .map((role) => (typeof role === 'string' ? role.trim() : ''))
+      .filter((role) => role.length > 0);
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+  return ['customer'];
+}
+
+/**
  * 获取默认分页大小
  */
 export async function getDefaultPageSize(): Promise<number> {

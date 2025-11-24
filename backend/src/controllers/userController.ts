@@ -3,6 +3,41 @@ import { pool } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 
+const AUTO_CREATE_COMPANY_NOTE = 'Auto-created via user management';
+
+const ensureCustomerCompany = async (
+  companyName: string,
+  contactName?: string | null,
+  email?: string | null,
+  phone?: string | null,
+): Promise<number> => {
+  const normalizedName = companyName.trim();
+  if (!normalizedName) {
+    throw new Error('Company name is required');
+  }
+
+  let companyResult = await pool.query(
+    'SELECT id FROM customer_companies WHERE company_name = $1',
+    [normalizedName],
+  );
+
+  if (companyResult.rows.length === 0) {
+    companyResult = await pool.query(
+      `INSERT INTO customer_companies (company_name, contact_name, email, phone, notes)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [
+        normalizedName,
+        contactName || null,
+        email || null,
+        phone || null,
+        AUTO_CREATE_COMPANY_NOTE,
+      ],
+    );
+  }
+
+  return companyResult.rows[0].id as number;
+};
+
 // 获取用户列表（仅管理员）
 export const getUsers = async (req: AuthRequest, res: Response) => {
   try {
@@ -915,9 +950,15 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       values.push(null);
     }
 
+    let normalizedCompanyName: string | null | undefined;
     if (company_name !== undefined) {
+      if (typeof company_name === 'string') {
+        normalizedCompanyName = company_name.trim() || null;
+      } else {
+        normalizedCompanyName = company_name;
+      }
       updates.push(`company_name = $${paramIndex++}`);
-      values.push(company_name);
+      values.push(normalizedCompanyName);
     }
     if (contact_name !== undefined) {
       updates.push(`contact_name = $${paramIndex++}`);
@@ -976,6 +1017,42 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       values.push(is_active);
     }
 
+    const nextContactName =
+      contact_name !== undefined ? contact_name : existingUser.contact_name;
+    const nextEmail = email !== undefined ? email : existingUser.email;
+    const nextPhone = phone !== undefined ? phone : existingUser.phone;
+
+    let companyIdToApply: number | null = existingUser.company_id;
+    let companyIdChanged = false;
+
+    if (targetRole === 'customer') {
+      if (normalizedCompanyName !== undefined) {
+        if (normalizedCompanyName) {
+          const resolvedCompanyId = await ensureCustomerCompany(
+            normalizedCompanyName,
+            nextContactName,
+            nextEmail,
+            nextPhone,
+          );
+          if (resolvedCompanyId !== existingUser.company_id) {
+            companyIdToApply = resolvedCompanyId;
+            companyIdChanged = true;
+          }
+        } else if (existingUser.company_id !== null) {
+          companyIdToApply = null;
+          companyIdChanged = true;
+        }
+      }
+    } else if (existingUser.company_id !== null) {
+      companyIdToApply = null;
+      companyIdChanged = true;
+    }
+
+    if (companyIdChanged) {
+      updates.push(`company_id = $${paramIndex++}`);
+      values.push(companyIdToApply);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: '没有要更新的字段' });
     }
@@ -983,6 +1060,13 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     values.push(id);
     const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
     const result = await pool.query(updateQuery, values);
+
+    if (companyIdChanged) {
+      await pool.query(
+        'UPDATE orders SET company_id = $1 WHERE customer_id = $2',
+        [companyIdToApply, id],
+      );
+    }
 
     res.json({
       message: '用户信息更新成功',
