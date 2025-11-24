@@ -117,7 +117,7 @@
         </el-form>
       </section>
 
-      <section class="profile-card version-card" v-if="isCapacitor">
+      <section class="profile-card version-card" v-if="isMobile">
         <div class="section-title">版本信息</div>
         <el-form :label-width="isMobile ? '100%' : '120px'" :label-position="isMobile ? 'top' : 'right'">
           <el-form-item label="当前版本">
@@ -256,7 +256,7 @@ const handleCheckUpdate = async () => {
   try {
     const updated = await checkForUpdate(true);
     if (!updated && !isCapacitor.value) {
-      ElMessage.info('Web 端暂不支持自动更新，请通过官网下载最新 App');
+      ElMessage.info('当前环境无法自动更新，请通过官网下载最新版 App');
     }
   } catch (error) {
     console.error('检查更新失败:', error);
@@ -484,8 +484,8 @@ watch(() => authStore.notificationEnabled, (newVal) => {
 });
 
 onMounted(async () => {
-  // 加载当前版本信息
-  if (isCapacitor.value) {
+  // 加载当前版本信息（仅移动端展示）
+  if (isMobile.value) {
     await loadCurrentVersion();
   }
   loadProfile();

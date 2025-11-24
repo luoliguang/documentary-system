@@ -15,6 +15,37 @@ export interface VersionInfo {
   minSupportedVersion?: string; // 最低支持版本
 }
 
+const REMOTE_VERSION_BASE_URL = 'https://order.fangdutex.cn';
+
+const isNativeCapacitorEnvironment = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  if (!isCapacitorApp()) {
+    return false;
+  }
+  const capacitor = (window as any).Capacitor;
+  if (typeof capacitor?.getPlatform === 'function') {
+    const platform = capacitor.getPlatform();
+    return platform && platform !== 'web';
+  }
+  return window.location.protocol === 'capacitor:';
+};
+
+const resolveVersionEndpoint = (preferRemote = false): string => {
+  if (typeof window === 'undefined') {
+    return REMOTE_VERSION_BASE_URL;
+  }
+  if (preferRemote) {
+    return REMOTE_VERSION_BASE_URL;
+  }
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return window.location.origin;
+  }
+  return window.location.origin;
+};
+
 /**
  * 比较版本号
  * @param current 当前版本
@@ -43,8 +74,12 @@ export function compareVersions(current: string, latest: string): number {
  */
 export async function getCurrentVersion(): Promise<string> {
   try {
-    if (!isCapacitorApp()) {
-      const response = await fetch(`/version.json?t=${Date.now()}`, {
+    if (!isNativeCapacitorEnvironment()) {
+      if (typeof window === 'undefined') {
+        return '1.0.0';
+      }
+      const baseUrl = resolveVersionEndpoint(false);
+      const response = await fetch(`${baseUrl}/version.json?t=${Date.now()}`, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' },
       });
@@ -66,10 +101,8 @@ export async function getCurrentVersion(): Promise<string> {
  */
 export async function fetchLatestVersion(): Promise<VersionInfo | null> {
   try {
-    const serverUrl = window.location.hostname === 'localhost'
-      ? 'https://order.fangdutex.cn'
-      : `${window.location.origin}`;
-    const response = await fetch(`${serverUrl}/version.json?t=${Date.now()}`, {
+    const baseUrl = resolveVersionEndpoint(isNativeCapacitorEnvironment());
+    const response = await fetch(`${baseUrl}/version.json?t=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Cache-Control': 'no-cache',
