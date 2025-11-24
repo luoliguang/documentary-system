@@ -310,7 +310,28 @@
           />
         </el-form-item>
         <el-form-item label="公司名称">
-          <el-input v-model="form.company_name" placeholder="请输入公司名称" />
+          <el-select
+            v-model="form.company_name"
+            placeholder="请选择或输入公司名称"
+            filterable
+            remote
+            reserve-keyword
+            :remote-method="handleCompanySearch"
+            :loading="companyOptionsLoading"
+            :allow-create="canCreateCompanyOption"
+            :default-first-option="true"
+            @visible-change="handleCompanyDropdownVisibleChange"
+          >
+            <el-option
+              v-for="company in companyOptions"
+              :key="company.id ?? company.company_name"
+              :label="formatCompanyLabel(company)"
+              :value="company.company_name"
+            />
+          </el-select>
+          <div class="form-tip">
+            可选择已有公司；仅管理员可输入新公司名称并按 Enter 快速创建
+          </div>
         </el-form-item>
         <el-form-item label="联系人姓名">
           <el-input v-model="form.contact_name" placeholder="请输入联系人姓名" />
@@ -392,17 +413,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, computed } from 'vue';
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { usersApi } from '../../api/users';
 import { useConfigOptions } from '../../composables/useConfigOptions';
 import { useCustomerCompaniesStore } from '../../stores/customerCompanies';
-import type { User } from '../../types';
+import type { User, CustomerCompany } from '../../types';
 
 const authStore = useAuthStore();
 const customerCompaniesStore = useCustomerCompaniesStore();
+const canCreateCompanyOption = computed(() => authStore.isAdmin);
 const loading = ref(false);
 const users = ref<User[]>([]);
 const pagination = ref({
@@ -473,13 +495,62 @@ const passwordForm = reactive({
   confirm_password: '',
 });
 
+const companySearchOptions = ref<CustomerCompany[] | null>(null);
+const companySearchLoading = ref(false);
+const companyOptions = computed(() => companySearchOptions.value ?? customerCompaniesStore.companies);
+const companyOptionsLoading = computed(() => customerCompaniesStore.loading || companySearchLoading.value);
+
 const refreshCustomerCompaniesCache = async (role?: string) => {
   if (role === 'customer') {
     try {
       await customerCompaniesStore.refresh();
+      companySearchOptions.value = null;
     } catch (error) {
       console.error('刷新客户公司缓存失败:', error);
     }
+  }
+};
+
+const formatCompanyLabel = (company: CustomerCompany) => {
+  const rawCount = company.user_count;
+  const userCount =
+    typeof rawCount === 'number'
+      ? rawCount
+      : typeof rawCount === 'string'
+      ? Number(rawCount)
+      : 0;
+  const safeCount = Number.isFinite(userCount) && userCount > 0 ? userCount : 0;
+  const suffix = safeCount > 0 ? `（${safeCount} 个账号）` : '（暂无账号）';
+  return `${company.company_name}${suffix}`;
+};
+
+const handleCompanyDropdownVisibleChange = async (visible: boolean) => {
+  if (!visible) {
+    companySearchOptions.value = null;
+    return;
+  }
+  if (customerCompaniesStore.companies.length === 0 || customerCompaniesStore.isStale) {
+    try {
+      await customerCompaniesStore.fetchCompanies();
+    } catch (error) {
+      console.error('加载客户公司列表失败:', error);
+    }
+  }
+};
+
+const handleCompanySearch = async (query: string) => {
+  if (!query) {
+    companySearchOptions.value = null;
+    return;
+  }
+  companySearchLoading.value = true;
+  try {
+    const result = await customerCompaniesStore.fetchCompanies({ search: query, force: true });
+    companySearchOptions.value = result;
+  } catch (error) {
+    console.error('搜索客户公司失败:', error);
+  } finally {
+    companySearchLoading.value = false;
   }
 };
 
@@ -763,6 +834,9 @@ onMounted(() => {
   loadUsers();
   loadRoles();
   loadOrderTypes();
+  customerCompaniesStore.fetchCompanies().catch((error) => {
+    console.error('初始化客户公司列表失败:', error);
+  });
 });
 </script>
 

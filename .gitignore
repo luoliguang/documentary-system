@@ -362,3 +362,6 @@ docs/CUSTOMER_CODE_EXPLANATION.md
 CURSOR_SOUL.md
 CURSOR_RULES.md
 docs/ADR-005-customer-company-cache-refresh.md
+frontend/src/views/users/UserList.vue
+docs/ADR-006-user-company-selector-enhancement.md
+docs/ADR-*.md
