@@ -8,9 +8,11 @@ import App from './App.vue';
 import router from './router';
 import { useNotificationsStore } from './stores/notifications';
 import { isCapacitorApp } from './utils/device';
+import { persistedStatePlugin } from './plugins/persistedState';
 
 const app = createApp(App);
 const pinia = createPinia();
+pinia.use(persistedStatePlugin());
 
 // 注册所有图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

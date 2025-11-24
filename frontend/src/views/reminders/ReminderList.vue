@@ -145,6 +145,7 @@
         <el-table-column label="制单表" width="80" align="center">
           <template #default="{ row }">
             <el-image
+              loading="lazy"
               v-if="row.images && row.images.length > 0"
               :src="row.images[0]"
               :preview-src-list="row.images"
@@ -431,13 +432,16 @@ import { Picture, Search, Refresh, QuestionFilled } from '@element-plus/icons-vu
 import { useMobileDateRange } from '../../composables/useMobileDateRange';
 import { useAuthStore } from '../../stores/auth';
 import { remindersApi } from '../../api/reminders';
+import { useRemindersStore } from '../../stores/reminders';
 import type { DeliveryReminder } from '../../types';
 // @ts-ignore - Vue SFC with script setup
 import OrderNumberFeedbackDialog from '../../components/OrderNumberFeedbackDialog.vue';
 
 const authStore = useAuthStore();
-const loading = ref(false);
-const reminders = ref<DeliveryReminder[]>([]);
+const remindersStore = useRemindersStore();
+remindersStore.initRealtime();
+const reminders = computed(() => remindersStore.reminders);
+const loading = remindersStore.isLoading;
 const respondDialogVisible = ref(false);
 const currentReminder = ref<DeliveryReminder | null>(null);
 // 桌面端默认展开，手机端默认收起
@@ -527,49 +531,46 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleString('zh-CN');
 };
 
-const loadReminders = async () => {
-  loading.value = true;
-  try {
-    const params: any = {};
-    
-    if (searchForm.value.order_number) {
-      params.order_number = searchForm.value.order_number;
-    }
-    if (searchForm.value.customer_order_number) {
-      params.customer_order_number = searchForm.value.customer_order_number;
-    }
-    if (searchForm.value.company_name) {
-      params.company_name = searchForm.value.company_name;
-    }
-    if (searchForm.value.reminder_type) {
-      params.reminder_type = searchForm.value.reminder_type;
-    }
-    if (searchForm.value.is_resolved !== undefined) {
-      params.is_resolved = searchForm.value.is_resolved;
-    }
-    // 使用 composable 构建日期查询参数
-    const { start, end } = createDateRange.buildQueryParams({
-      startTime: '00:00:00',
-      endTime: '23:59:59',
-    });
-    if (start) {
-      params.start_date = start.split(' ')[0]; // 只取日期部分
-    }
-    if (end) {
-      params.end_date = end.split(' ')[0]; // 只取日期部分
-    }
+const buildReminderQuery = () => {
+  const params: any = {};
+  if (searchForm.value.order_number) {
+    params.order_number = searchForm.value.order_number;
+  }
+  if (searchForm.value.customer_order_number) {
+    params.customer_order_number = searchForm.value.customer_order_number;
+  }
+  if (searchForm.value.company_name) {
+    params.company_name = searchForm.value.company_name;
+  }
+  if (searchForm.value.reminder_type) {
+    params.reminder_type = searchForm.value.reminder_type;
+  }
+  if (searchForm.value.is_resolved !== undefined) {
+    params.is_resolved = searchForm.value.is_resolved;
+  }
+  const { start, end } = createDateRange.buildQueryParams({
+    startTime: '00:00:00',
+    endTime: '23:59:59',
+  });
+  if (start) {
+    params.start_date = start.split(' ')[0];
+  }
+  if (end) {
+    params.end_date = end.split(' ')[0];
+  }
+  return params;
+};
 
-    const response = await remindersApi.getDeliveryReminders(params);
-    reminders.value = response.reminders;
+const loadReminders = async (options?: { force?: boolean }) => {
+  try {
+    await remindersStore.fetchReminders(buildReminderQuery(), options);
   } catch (error) {
     ElMessage.error('加载催货记录失败');
-  } finally {
-    loading.value = false;
   }
 };
 
 const handleSearch = () => {
-  loadReminders();
+  loadReminders({ force: true });
 };
 
 const handleFeedbackSuccess = () => {
@@ -586,7 +587,7 @@ const handleReset = () => {
     dateRange: [],
   };
   createDateRange.reset();
-  loadReminders();
+  loadReminders({ force: true });
 };
 
 const handleRespond = (reminder: DeliveryReminder) => {
@@ -602,13 +603,13 @@ const submitRespond = async () => {
   }
 
   try {
-    await remindersApi.respondToReminder(currentReminder.value.id, {
+    const response = await remindersApi.respondToReminder(currentReminder.value.id, {
       admin_response: respondForm.value.admin_response,
       is_resolved: true,
     });
     ElMessage.success('回复成功');
     respondDialogVisible.value = false;
-    await loadReminders();
+    remindersStore.upsertReminder(response.reminder);
   } catch (error) {
     ElMessage.error('回复失败');
   }
@@ -627,12 +628,12 @@ const submitEditMessage = async () => {
   }
 
   try {
-    await remindersApi.updateReminderMessage(currentReminder.value.id, {
+    const response = await remindersApi.updateReminderMessage(currentReminder.value.id, {
       message: editMessageForm.value.message,
     });
     ElMessage.success('催货消息更新成功');
     editMessageDialogVisible.value = false;
-    await loadReminders();
+    remindersStore.upsertReminder(response.reminder);
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || '更新失败');
   }
@@ -651,12 +652,12 @@ const submitEditResponse = async () => {
   }
 
   try {
-    await remindersApi.updateAdminResponse(currentReminder.value.id, {
+    const response = await remindersApi.updateAdminResponse(currentReminder.value.id, {
       admin_response: editResponseForm.value.admin_response,
     });
     ElMessage.success('管理员回复更新成功');
     editResponseDialogVisible.value = false;
-    await loadReminders();
+    remindersStore.upsertReminder(response.reminder);
   } catch (error: any) {
     ElMessage.error(error.response?.data?.error || '更新失败');
   }
@@ -676,7 +677,7 @@ const handleDelete = async (reminder: DeliveryReminder) => {
 
     await remindersApi.deleteReminder(reminder.id);
     ElMessage.success('催货记录删除成功');
-    await loadReminders();
+    remindersStore.removeReminder(reminder.id);
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error(error.response?.data?.error || '删除催货记录失败');

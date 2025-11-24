@@ -159,7 +159,7 @@
         >
           <div v-if="form.images && form.images.length > 0" class="image-list">
             <div v-for="(image, index) in form.images" :key="index" class="image-item">
-              <el-image :src="image" fit="cover" class="preview-image" />
+              <el-image :src="image" fit="cover" class="preview-image" loading="lazy" />
               <el-button
                 type="danger"
                 size="small"

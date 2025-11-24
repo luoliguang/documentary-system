@@ -83,8 +83,11 @@ onMounted(async () => {
 
   // Service Worker 注册
   if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistration('/service-worker.js').then((registration) => {
+      registration?.unregister().catch(() => {});
+    });
     navigator.serviceWorker
-      .register('/service-worker.js')
+      .register('/sw.js')
       .then(() => {
         // Service Worker registered successfully
       })

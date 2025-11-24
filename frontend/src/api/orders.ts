@@ -1,5 +1,6 @@
 import api from '../utils/request';
 import { Order, OrdersResponse, OrderStatusHistory, User, CustomerCompany } from '../types';
+import { cache } from '../utils/cache';
 
 interface OrderQueryParams {
   page?: number;
@@ -15,6 +16,13 @@ interface OrderQueryParams {
   estimated_ship_start?: string;
   estimated_ship_end?: string;
 }
+
+const LONG_TTL = 30 * 24 * 60 * 60 * 1000;
+const buildCacheKey = (prefix: string, params?: Record<string, any>) =>
+  `${prefix}:${JSON.stringify(params ? Object.entries(params).sort() : [])}`;
+const shouldCache = (params?: Record<string, any>) =>
+  !params || Object.keys(params).length === 0;
+const resolvePromise = <T>(promise: Promise<any>) => promise as Promise<T>;
 
 const normalizeOrderPayload = (data: Partial<Order>) => {
   const cleaned: Record<string, any> = { ...data };
@@ -127,17 +135,57 @@ export const ordersApi = {
 
   // 获取客户列表（仅管理员）
   getCustomers: (params?: { company_id?: number; company_name?: string; search?: string }): Promise<{ customers: User[] }> => {
-    return api.get('/orders/customers/list', { params });
+    const canCache = shouldCache(params);
+    const cacheKey = buildCacheKey('orders:customers', params);
+    if (canCache) {
+      const cached = cache.get<{ customers: User[] }>(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
+    const request = async () => {
+      const response = await resolvePromise<{ customers: User[] }>(
+        api.get('/orders/customers/list', { params })
+      );
+      if (canCache) {
+        cache.set(cacheKey, response, { ttl: LONG_TTL, persistent: true });
+      }
+      return response;
+    };
+    return request();
   },
 
   // 获取客户公司列表（仅管理员）
   getCustomerCompanies: (params?: { search?: string }): Promise<{ companies: CustomerCompany[] }> => {
-    return api.get('/orders/companies/list', { params });
+    const canCache = shouldCache(params);
+    const cacheKey = buildCacheKey('orders:companies', params);
+    if (canCache) {
+      const cached = cache.get<{ companies: CustomerCompany[] }>(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
+    const request = async () => {
+      const response = await resolvePromise<{ companies: CustomerCompany[] }>(
+        api.get('/orders/companies/list', { params })
+      );
+      if (canCache) {
+        cache.set(cacheKey, response, { ttl: LONG_TTL, persistent: true });
+      }
+      return response;
+    };
+    return request();
   },
 
   // 获取生产跟单列表（仅管理员）
   getProductionManagers: (): Promise<{ productionManagers: any[] }> => {
-    return api.get('/orders/production-managers/list');
+    const cacheKey = 'orders:production-managers';
+    const cached = cache.get<{ productionManagers: any[] }>(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    const request = async () => {
+      const response = await resolvePromise<{ productionManagers: any[] }>(
+        api.get('/orders/production-managers/list')
+      );
+      cache.set(cacheKey, response, { ttl: LONG_TTL, persistent: true });
+      return response;
+    };
+    return request();
   },
 
   // 分配订单给生产跟单（仅管理员）

@@ -14,6 +14,26 @@ import {
   canRespondReminder,
 } from '../services/permissionService.js';
 import { addOrderActivity } from '../services/activityService.js';
+import { emitReminderUpdated, emitReminderRemoved } from '../websocket/emitter.js';
+
+const REMINDER_SNAPSHOT_QUERY = `
+  SELECT 
+    dr.*,
+    o.order_number,
+    o.customer_order_number,
+    o.images,
+    u.company_name,
+    u.contact_name
+  FROM delivery_reminders dr
+  LEFT JOIN orders o ON dr.order_id = o.id
+  LEFT JOIN users u ON dr.customer_id = u.id
+  WHERE dr.id = $1
+`;
+
+async function fetchReminderSnapshot(reminderId: number) {
+  const snapshotResult = await pool.query(REMINDER_SNAPSHOT_QUERY, [reminderId]);
+  return snapshotResult.rows[0] || null;
+}
 
 // 催货（客户功能）
 export const createDeliveryReminder = async (
@@ -204,6 +224,11 @@ export const createDeliveryReminder = async (
     } catch (notificationError) {
       // 通知创建失败不影响催货记录的创建，只记录日志
       console.error('创建催单通知失败:', notificationError);
+    }
+
+    const snapshot = await fetchReminderSnapshot(result.rows[0].id);
+    if (snapshot) {
+      emitReminderUpdated(result.rows[0].id, snapshot);
     }
 
     res.status(201).json({
@@ -632,6 +657,11 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
       isVisibleToCustomer: true,
     });
 
+    const snapshot = await fetchReminderSnapshot(updatedReminder.id);
+    if (snapshot) {
+      emitReminderUpdated(updatedReminder.id, snapshot);
+    }
+
     res.json({
       message: '回复成功',
       reminder: updatedReminder,
@@ -697,6 +727,11 @@ export const assignReminderToProductionManager = async (
       [assigned_to || null, id]
     );
 
+    const snapshot = await fetchReminderSnapshot(result.rows[0].id);
+    if (snapshot) {
+      emitReminderUpdated(result.rows[0].id, snapshot);
+    }
+
     res.json({
       message: '催货任务派送成功',
       reminder: result.rows[0],
@@ -749,6 +784,11 @@ export const updateReminderMessage = async (req: AuthRequest, res: Response) => 
        RETURNING *`,
       [message || null, id]
     );
+
+    const snapshot = await fetchReminderSnapshot(result.rows[0].id);
+    if (snapshot) {
+      emitReminderUpdated(result.rows[0].id, snapshot);
+    }
 
     res.json({
       message: '催货消息更新成功',
@@ -812,6 +852,11 @@ export const updateAdminResponse = async (req: AuthRequest, res: Response) => {
       [admin_response || null, id]
     );
 
+    const snapshot = await fetchReminderSnapshot(result.rows[0].id);
+    if (snapshot) {
+      emitReminderUpdated(result.rows[0].id, snapshot);
+    }
+
     res.json({
       message: '管理员回复更新成功',
       reminder: result.rows[0],
@@ -860,6 +905,8 @@ export const deleteReminder = async (req: AuthRequest, res: Response) => {
        WHERE id = $2`,
       [user.userId, id]
     );
+
+    emitReminderRemoved(Number(id));
 
     res.json({
       message: '催货记录删除成功',

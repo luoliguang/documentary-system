@@ -12,6 +12,7 @@
         <div class="card-row row-1">
           <div class="thumbnail-wrapper" @click.stop="handleImageClick()">
             <el-image
+              loading="lazy"
               v-if="order.images && order.images.length > 0"
               :src="order.images[0]"
               :preview-src-list="order.images"

@@ -2,11 +2,25 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { configsApi } from '../api/configs';
 import type { ConfigMeta } from '../api/configs';
+import { cache } from '../utils/cache';
+import { CONFIG_KEYS } from '../constants/configKeys';
 
 type CacheKey = string;
 
 const buildCacheKey = (key: string, type?: string) =>
   `${type || 'general'}:${key}`;
+
+const PERSISTED_KEYS = new Set<string>([
+  CONFIG_KEYS.ORDER_STATUSES,
+  CONFIG_KEYS.ORDER_TYPES,
+  CONFIG_KEYS.ROLES,
+  CONFIG_KEYS.CUSTOMER_ROLES,
+]);
+
+const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+const hasOwn = (target: Record<string, any>, key: string) =>
+  Object.prototype.hasOwnProperty.call(target, key);
 
 interface FetchOptions {
   type?: string;
@@ -24,6 +38,15 @@ export const useConfigStore = defineStore('config-store', () => {
   const meta = ref<Record<CacheKey, any>>({});
   const loading = ref<Record<CacheKey, boolean>>({});
 
+  const restoreFromCache = (cacheKey: string) => {
+    const cached = cache.get<any>(`config:${cacheKey}`);
+    if (cached !== undefined) {
+      values.value[cacheKey] = cached;
+      return cached;
+    }
+    return undefined;
+  };
+
   const isLoading = (key: string, type?: string) =>
     Boolean(loading.value[buildCacheKey(key, type)]);
 
@@ -35,8 +58,14 @@ export const useConfigStore = defineStore('config-store', () => {
 
   const fetchConfig = async (key: string, options: FetchOptions = {}) => {
     const cacheKey = buildCacheKey(key, options.type);
-    if (!options.force && values.value[cacheKey] !== undefined) {
-      return values.value[cacheKey];
+    if (!options.force) {
+      if (hasOwn(values.value, cacheKey)) {
+        return values.value[cacheKey];
+      }
+      const restored = restoreFromCache(cacheKey);
+      if (restored !== undefined) {
+        return restored;
+      }
     }
     loading.value[cacheKey] = true;
     try {
@@ -45,6 +74,12 @@ export const useConfigStore = defineStore('config-store', () => {
       })) as { config?: any; meta?: ConfigMeta | null };
       values.value[cacheKey] = response.config ?? null;
       meta.value[cacheKey] = response.meta ?? null;
+      if (PERSISTED_KEYS.has(key)) {
+        cache.set(`config:${cacheKey}`, values.value[cacheKey], {
+          ttl: THIRTY_DAYS,
+          persistent: true,
+        });
+      }
       return values.value[cacheKey];
     } finally {
       loading.value[cacheKey] = false;
@@ -70,12 +105,14 @@ export const useConfigStore = defineStore('config-store', () => {
       values.value = {};
       meta.value = {};
       loading.value = {};
+      cache.clear();
       return;
     }
     const cacheKey = buildCacheKey(key, type);
     delete values.value[cacheKey];
     delete meta.value[cacheKey];
     delete loading.value[cacheKey];
+    cache.delete(`config:${cacheKey}`);
   };
 
   return {

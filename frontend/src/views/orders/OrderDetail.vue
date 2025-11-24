@@ -127,6 +127,7 @@
           <h4>订单图片</h4>
           <div class="image-gallery" style="margin-top: 10px">
             <el-image
+              loading="lazy"
               v-for="(image, index) in order.images"
               :key="index"
               :src="image"

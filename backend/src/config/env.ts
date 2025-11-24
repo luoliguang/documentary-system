@@ -21,5 +21,9 @@ export const config = {
     acl: process.env.OSS_ACL || 'private', // 访问权限：private 或 public-read
     usePublicUrl: process.env.OSS_USE_PUBLIC_URL === 'true', // 是否直接使用公共URL
   },
+  redis: {
+    url: process.env.REDIS_URL || '',
+    keyPrefix: process.env.REDIS_PREFIX || 'fangdu:',
+  },
 };
 

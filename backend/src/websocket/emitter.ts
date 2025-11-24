@@ -25,3 +25,20 @@ export function emitOrderActivityAdded(activity: any) {
   });
 }
 
+export function emitReminderUpdated(reminderId: number, reminder: any) {
+  broadcast({
+    type: 'reminder-updated',
+    reminderId,
+    reminder,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function emitReminderRemoved(reminderId: number) {
+  broadcast({
+    type: 'reminder-removed',
+    reminderId,
+    timestamp: new Date().toISOString(),
+  });
+}
+

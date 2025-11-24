@@ -182,6 +182,7 @@
         <el-table-column label="制单表" width="80" align="center">
           <template #default="{ row }">
             <el-image
+              loading="lazy"
               v-if="row.images && row.images.length > 0"
               :src="row.images[0]"
               :preview-src-list="row.images"

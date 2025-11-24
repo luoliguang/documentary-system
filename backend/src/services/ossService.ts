@@ -121,7 +121,7 @@ export async function uploadToOSS(
  * @param expires 过期时间（秒），默认1小时
  * @returns 签名URL
  */
-export async function getSignedUrl(objectName: string, expires: number = 3600): Promise<string> {
+export async function getSignedUrl(objectName: string, expires: number = 3600 * 24 * 7): Promise<string> {
   try {
     const client = getOSSClient();
     const url = client.signatureUrl(objectName, {

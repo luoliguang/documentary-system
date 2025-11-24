@@ -25,6 +25,7 @@
         <section class="card-body">
           <div class="preview">
             <el-image
+              loading="lazy"
               v-if="item.images && item.images.length"
               :src="item.images[0]"
               :preview-src-list="item.images"
