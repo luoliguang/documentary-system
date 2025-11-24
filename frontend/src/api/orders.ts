@@ -1,5 +1,5 @@
 import api from '../utils/request';
-import { Order, OrdersResponse, OrderStatusHistory } from '../types';
+import { Order, OrdersResponse, OrderStatusHistory, User, CustomerCompany } from '../types';
 
 interface OrderQueryParams {
   page?: number;
@@ -126,12 +126,12 @@ export const ordersApi = {
   },
 
   // 获取客户列表（仅管理员）
-  getCustomers: (params?: { company_id?: number; company_name?: string; search?: string }): Promise<{ customers: any[] }> => {
+  getCustomers: (params?: { company_id?: number; company_name?: string; search?: string }): Promise<{ customers: User[] }> => {
     return api.get('/orders/customers/list', { params });
   },
 
   // 获取客户公司列表（仅管理员）
-  getCustomerCompanies: (params?: { search?: string }): Promise<{ companies: any[] }> => {
+  getCustomerCompanies: (params?: { search?: string }): Promise<{ companies: CustomerCompany[] }> => {
     return api.get('/orders/companies/list', { params });
   },
 

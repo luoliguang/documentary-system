@@ -24,6 +24,21 @@ export interface User {
   is_active: boolean;
 }
 
+export interface CustomerCompany {
+  id: number;
+  company_name: string;
+  company_code?: string | null;
+  contact_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  user_count?: number;
+  order_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // 发货单号类型
 export interface ShippingTrackingNumber {
   type: 'main' | 'supplement' | 'split_address' | 'other'; // 主单号、补件单号、分地址单号、其他

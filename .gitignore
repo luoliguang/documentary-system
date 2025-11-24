@@ -361,3 +361,4 @@ database/README_ORDER_ACTIVITIES_MIGRATION.md
 docs/CUSTOMER_CODE_EXPLANATION.md
 CURSOR_SOUL.md
 CURSOR_RULES.md
+docs/ADR-005-customer-company-cache-refresh.md

@@ -281,19 +281,22 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { Delete, Upload, Picture, DocumentCopy, UploadFilled } from '@element-plus/icons-vue';
 import { ordersApi } from '../../api/orders';
 import { useAuthStore } from '../../stores/auth';
+import { useCustomerCompaniesStore } from '../../stores/customerCompanies';
 import { useConfigOptions } from '../../composables/useConfigOptions';
-import type { ShippingTrackingNumber } from '../../types';
+import type { ShippingTrackingNumber, CustomerCompany } from '../../types';
 
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
-const companies = ref<any[]>([]);
 const companyCustomers = ref<any[]>([]);
 const uploadAreaRef = ref<HTMLElement | null>(null);
 const isUploadAreaFocused = ref(false);
 const isMobile = ref(false);
+const customerCompaniesStore = useCustomerCompaniesStore();
+const manualCompanyOptions = ref<CustomerCompany[] | null>(null);
+const companies = computed(() => manualCompanyOptions.value ?? customerCompaniesStore.companies);
 
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
@@ -368,14 +371,17 @@ const disabledFutureDate = (time: Date) => {
 
 const loadCompanies = async (search?: string) => {
   try {
-    const response = await ordersApi.getCustomerCompanies({ search });
-    companies.value = response.companies;
-    
-    // 如果已选择公司，加载该公司的客户列表
-    if (form.company_id) {
-      await loadCompanyCustomers(form.company_id);
+    const result = await customerCompaniesStore.fetchCompanies({ search, force: !!search });
+    if (search) {
+      manualCompanyOptions.value = result;
+    } else {
+      manualCompanyOptions.value = null;
+      if (form.company_id) {
+        await loadCompanyCustomers(form.company_id);
+      }
     }
   } catch (error) {
+    console.error('加载客户公司列表失败:', error);
     ElMessage.error('加载客户公司列表失败');
   }
 };

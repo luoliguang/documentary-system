@@ -398,9 +398,11 @@ import { Plus } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { usersApi } from '../../api/users';
 import { useConfigOptions } from '../../composables/useConfigOptions';
+import { useCustomerCompaniesStore } from '../../stores/customerCompanies';
 import type { User } from '../../types';
 
 const authStore = useAuthStore();
+const customerCompaniesStore = useCustomerCompaniesStore();
 const loading = ref(false);
 const users = ref<User[]>([]);
 const pagination = ref({
@@ -470,6 +472,16 @@ const passwordForm = reactive({
   new_password: '',
   confirm_password: '',
 });
+
+const refreshCustomerCompaniesCache = async (role?: string) => {
+  if (role === 'customer') {
+    try {
+      await customerCompaniesStore.refresh();
+    } catch (error) {
+      console.error('刷新客户公司缓存失败:', error);
+    }
+  }
+};
 
 const rules = {
   account: [
@@ -645,6 +657,7 @@ const submitForm = async () => {
 
         await usersApi.updateUser(currentUser.value.id, updateData);
         ElMessage.success('用户信息更新成功');
+        await refreshCustomerCompaniesCache(updateData.role ?? currentUser.value.role);
       } else {
         // 创建用户
         const createData: any = {
@@ -666,6 +679,7 @@ const submitForm = async () => {
         }
         await usersApi.createUser(createData);
         ElMessage.success('用户创建成功');
+        await refreshCustomerCompaniesCache(createData.role);
       }
       dialogVisible.value = false;
       await loadUsers();
@@ -726,6 +740,7 @@ const handleDelete = async (row: User) => {
 
     await usersApi.deleteUser(row.id);
     ElMessage.success('用户已永久删除');
+    await refreshCustomerCompaniesCache(row.role);
     await loadUsers();
   } catch (error: any) {
     if (error !== 'cancel') {
