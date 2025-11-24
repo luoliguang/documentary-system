@@ -247,29 +247,24 @@ const initials = computed(() => {
 
 // 获取当前版本
 const loadCurrentVersion = async () => {
-  if (isCapacitor.value) {
-    currentVersion.value = await getCurrentVersion();
-  }
+  currentVersion.value = await getCurrentVersion();
 };
 
 // 检查更新
-    const handleCheckUpdate = async () => {
-      // 只在 Capacitor 环境中检查更新
-      if (!isCapacitor) {
-        ElMessage.warning('此功能仅在移动 App 中可用');
-        return;
-      }
-      
-      checkingUpdate.value = true;
-      try {
-        await checkForUpdate(true);
-      } catch (error) {
-        console.error('检查更新失败:', error);
-        ElMessage.error('检查更新失败，请稍后重试');
-      } finally {
-        checkingUpdate.value = false;
-      }
-    };
+const handleCheckUpdate = async () => {
+  checkingUpdate.value = true;
+  try {
+    const updated = await checkForUpdate(true);
+    if (!updated && !isCapacitor.value) {
+      ElMessage.info('Web 端暂不支持自动更新，请通过官网下载最新 App');
+    }
+  } catch (error) {
+    console.error('检查更新失败:', error);
+    ElMessage.error('检查更新失败，请稍后重试');
+  } finally {
+    checkingUpdate.value = false;
+  }
+};
 
 // 通知支持状态
 const notificationSupportInfo = computed(() => {
