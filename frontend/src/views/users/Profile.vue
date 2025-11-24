@@ -1,59 +1,66 @@
 <template>
   <div class="profile">
-    <el-card>
-      <template #header>
-        <h3>个人中心</h3>
-      </template>
+    <div
+      class="profile-layout"
+      :class="{
+        mobile: isMobile,
+        desktop: !isMobile,
+      }"
+    >
+      <section class="profile-card info-card">
+        <div class="card-header">
+          <div class="avatar">
+            <span>{{ initials }}</span>
+          </div>
+          <div class="user-meta">
+            <div class="username">{{ authStore.user?.username || '未登录用户' }}</div>
+            <div class="role-label">{{ currentRoleLabel }}</div>
+            <div v-if="authStore.user?.company_name" class="sub-text">
+              {{ authStore.user.company_name }}
+            </div>
+          </div>
+        </div>
 
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="120px"
-        style="max-width: 600px"
-      >
-        <el-form-item label="用户名">
-          <el-input :value="authStore.user?.username" disabled />
-        </el-form-item>
-        <el-form-item label="角色">
-          <el-input
-            :value="
-              authStore.user?.role === 'admin'
-                ? '管理员'
-                : authStore.user?.role === 'production_manager'
-                ? '生产跟单'
-                : '客户'
-            "
-            disabled
-          />
-        </el-form-item>
-        <el-form-item v-if="authStore.user?.customer_code" label="客户编号">
-          <el-input :value="authStore.user.customer_code" disabled />
-        </el-form-item>
-        <el-form-item v-if="authStore.user?.company_name" label="公司名称">
-          <el-input :value="authStore.user.company_name" disabled />
-        </el-form-item>
-        <el-form-item label="联系人姓名" prop="contact_name">
-          <el-input v-model="form.contact_name" placeholder="请输入联系人姓名" />
-        </el-form-item>
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="form.email" placeholder="请输入邮箱" />
-        </el-form-item>
-        <el-form-item label="电话" prop="phone">
-          <el-input v-model="form.phone" placeholder="请输入电话" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="submitForm">保存</el-button>
-        </el-form-item>
-      </el-form>
+        <el-form
+          ref="formRef"
+          :model="form"
+          :rules="rules"
+          :label-width="isMobile ? '100%' : '120px'"
+          :label-position="isMobile ? 'top' : 'right'"
+        >
+          <el-row :gutter="isMobile ? 12 : 24">
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="联系人姓名" prop="contact_name">
+                <el-input v-model="form.contact_name" placeholder="请输入联系人姓名" />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="邮箱" prop="email">
+                <el-input v-model="form.email" placeholder="请输入邮箱" />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="电话" prop="phone">
+                <el-input v-model="form.phone" placeholder="请输入电话" />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12" v-if="authStore.user?.customer_code">
+              <el-form-item label="客户编号">
+                <el-input :value="authStore.user.customer_code" disabled />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <div class="actions">
+            <el-button type="primary" @click="submitForm" class="full-width">
+              保存资料
+            </el-button>
+          </div>
+        </el-form>
+      </section>
 
-      <el-divider />
-
-      <el-card shadow="never">
-        <template #header>
-          <h4>通知设置</h4>
-        </template>
-        <el-form label-width="120px" style="max-width: 600px">
+      <section class="profile-card notification-card">
+        <div class="section-title">通知设置</div>
+        <el-form :label-width="isMobile ? '100%' : '120px'" :label-position="isMobile ? 'top' : 'right'">
           <el-form-item label="通知提醒">
             <el-switch
               v-model="notificationEnabled"
@@ -108,21 +115,16 @@
             </div>
           </el-form-item>
         </el-form>
-      </el-card>
+      </section>
 
-      <el-divider />
-
-      <!-- 版本信息（仅 Capacitor App 环境显示） -->
-      <el-card shadow="never" v-if="isCapacitor">
-        <template #header>
-          <h4>版本信息</h4>
-        </template>
-        <el-form label-width="120px" style="max-width: 600px">
+      <section class="profile-card version-card" v-if="isCapacitor">
+        <div class="section-title">版本信息</div>
+        <el-form :label-width="isMobile ? '100%' : '120px'" :label-position="isMobile ? 'top' : 'right'">
           <el-form-item label="当前版本">
-            <el-input :value="currentVersion" disabled style="width: 200px" />
+            <el-input :value="currentVersion" disabled style="width: 100%" />
             <el-button
               type="primary"
-              style="margin-left: 10px"
+              class="full-width"
               :loading="checkingUpdate"
               @click="handleCheckUpdate"
             >
@@ -130,51 +132,57 @@
             </el-button>
           </el-form-item>
         </el-form>
-      </el-card>
+      </section>
 
-      <el-divider v-if="isCapacitor" />
-
-      <el-card shadow="never">
-        <template #header>
-          <h4>修改密码</h4>
-        </template>
+      <section class="profile-card password-card">
+        <div class="section-title">修改密码</div>
         <el-form
           ref="passwordFormRef"
           :model="passwordForm"
           :rules="passwordRules"
-          label-width="120px"
-          style="max-width: 600px"
+          :label-width="isMobile ? '100%' : '120px'"
+          :label-position="isMobile ? 'top' : 'right'"
         >
-          <el-form-item label="旧密码" prop="old_password">
-            <el-input
-              v-model="passwordForm.old_password"
-              type="password"
-              placeholder="请输入旧密码"
-              show-password
-            />
-          </el-form-item>
-          <el-form-item label="新密码" prop="new_password">
-            <el-input
-              v-model="passwordForm.new_password"
-              type="password"
-              placeholder="请输入新密码"
-              show-password
-            />
-          </el-form-item>
-          <el-form-item label="确认密码" prop="confirm_password">
-            <el-input
-              v-model="passwordForm.confirm_password"
-              type="password"
-              placeholder="请再次输入新密码"
-              show-password
-            />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="submitPassword">修改密码</el-button>
-          </el-form-item>
+          <el-row :gutter="isMobile ? 12 : 24">
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="旧密码" prop="old_password">
+                <el-input
+                  v-model="passwordForm.old_password"
+                  type="password"
+                  placeholder="请输入旧密码"
+                  show-password
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="新密码" prop="new_password">
+                <el-input
+                  v-model="passwordForm.new_password"
+                  type="password"
+                  placeholder="请输入新密码"
+                  show-password
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="确认密码" prop="confirm_password">
+                <el-input
+                  v-model="passwordForm.confirm_password"
+                  type="password"
+                  placeholder="请再次输入新密码"
+                  show-password
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <div class="actions">
+            <el-button type="primary" @click="submitPassword" class="full-width">
+              修改密码
+            </el-button>
+          </div>
         </el-form>
-      </el-card>
-    </el-card>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -218,6 +226,24 @@ const notificationPermission = computed(() => getNotificationPermission());
 // 版本信息
 const currentVersion = ref('1.0.0');
 const checkingUpdate = ref(false);
+const currentRoleLabel = computed(() => {
+  const role = authStore.user?.role;
+  if (role === 'admin') return '管理员';
+  if (role === 'production_manager') return '生产跟单';
+  if (role === 'customer_service') return '客服';
+  if (role === 'customer') return '客户';
+  return role || '未设定角色';
+});
+
+const initials = computed(() => {
+  const username = authStore.user?.username?.trim();
+  if (!username) return '访';
+  const segments = username.split(/\s+/);
+  if (segments.length >= 2) {
+    return (segments[0][0] + segments[1][0]).toUpperCase();
+  }
+  return username.slice(0, 2).toUpperCase();
+});
 
 // 获取当前版本
 const loadCurrentVersion = async () => {
@@ -476,6 +502,130 @@ onMounted(async () => {
 <style scoped>
 .profile {
   width: 100%;
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  align-items: start;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.profile-layout.mobile {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.profile-layout.desktop {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+@supports (grid-template-columns: subgrid) {
+  .profile-layout.desktop .info-card {
+    grid-column: span 2;
+  }
+  .profile-layout.desktop .password-card {
+    grid-column: span 2;
+  }
+}
+
+.profile-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+.info-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #409eff, #66b1ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.user-meta .username {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.role-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.sub-text {
+  font-size: 13px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.actions {
+  margin-top: 8px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .profile-card {
+    padding: 16px;
+    border-radius: 10px;
+  }
+  .role-label {
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .profile-layout.desktop {
+    --desktop-columns: 3;
+    grid-template-columns: repeat(3, minmax(300px, 1fr));
+  }
+  .profile-layout.desktop .info-card,
+  .profile-layout.desktop .password-card {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1400px) {
+  .profile-layout.desktop {
+    --desktop-columns: 4;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+  }
+  .profile-layout.desktop .info-card,
+  .profile-layout.desktop .password-card {
+    grid-column: span 2;
+  }
 }
 </style>
 
