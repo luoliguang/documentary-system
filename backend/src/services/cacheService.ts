@@ -23,6 +23,7 @@ class CacheService {
       });
       this.connecting = this.client
         .connect()
+        .then(() => undefined)
         .catch((error) => {
           console.error('Redis连接失败:', error);
           this.client = null;
