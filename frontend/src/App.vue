@@ -10,19 +10,46 @@ import { checkForUpdate } from './utils/appUpdate';
 
 const authStore = useAuthStore();
 
-// 键盘挡输入框处理：输入框聚焦时自动滚动到可视区域
-const handleInputFocus = (e: Event) => {
-  const target = e.target as HTMLElement;
-  if (
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.closest('.el-input__inner') ||
-    target.closest('.el-textarea__inner')
-  ) {
-    setTimeout(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 300);
+const isFormField = (el: HTMLElement | null) => {
+  if (!el) return false;
+  const tagName = el.tagName;
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+    return true;
   }
+  return Boolean(
+    el.closest('.el-input__inner') ||
+    el.closest('.el-textarea__inner') ||
+    el.closest('.el-select') ||
+    el.closest('.el-date-editor')
+  );
+};
+
+const needsViewportAdjust = (el: HTMLElement) => {
+  const viewport = window.visualViewport;
+  const viewportHeight = viewport?.height ?? window.innerHeight;
+  const viewportTop = viewport?.offsetTop ?? 0;
+  const rect = el.getBoundingClientRect();
+  const top = rect.top - viewportTop;
+  const bottom = rect.bottom - viewportTop;
+  return top < 0 || bottom > viewportHeight;
+};
+
+// 键盘挡输入框处理：仅在元素被遮挡时滚动，避免无谓跳动
+const handleInputFocus = (e: Event) => {
+  const target = e.target as HTMLElement | null;
+  if (!target || !isFormField(target)) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    if (!document.body.contains(target)) {
+      return;
+    }
+    if (!needsViewportAdjust(target)) {
+      return;
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 250);
 };
 
 // PWA 安装提示
