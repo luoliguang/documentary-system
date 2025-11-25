@@ -60,10 +60,18 @@ api.interceptors.response.use(
 
       switch (status) {
         case 401:
-          ElMessage.error('未授权，请重新登录');
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          router.push('/login');
+          // 对于通知接口的 401，可能是 token 还未设置或已过期，静默处理
+          // 只有在非通知接口时才显示错误并跳转登录
+          const requestUrl = error.config?.url || '';
+          const isNotification401 = requestUrl.includes('/notifications/');
+          
+          if (!isNotification401) {
+            ElMessage.error('未授权，请重新登录');
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            router.push('/login');
+          }
+          // 通知接口的 401 静默处理，不显示错误消息
           break;
         case 403:
           // 检查是否是账号被禁用的错误
@@ -78,7 +86,12 @@ api.interceptors.response.use(
           }
           break;
         case 404:
-          ElMessage.error('请求的资源不存在');
+          // 对于催单统计接口的 404，不显示错误消息（订单可能不存在，这是预期行为）
+          const url = error.config?.url || '';
+          const isReminderStats404 = url.includes('/reminders/order/') && url.includes('/stats');
+          if (!isReminderStats404) {
+            ElMessage.error('请求的资源不存在');
+          }
           break;
         case 500:
           ElMessage.error('服务器内部错误');

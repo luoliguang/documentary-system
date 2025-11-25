@@ -576,10 +576,15 @@ export const getCustomerCompanies = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * 获取所有生产跟单列表（仅管理员）
+ * 获取所有生产跟单列表
+ * 管理员/客服：返回完整信息（包括 admin_notes）
+ * 生产跟单：返回基本信息（用于转交催单，不包含敏感信息）
  */
 export const getProductionManagers = async (req: AuthRequest, res: Response) => {
   try {
+    const user = req.user!;
+    const isAdminOrSupport = user.role === 'admin' || user.role === 'customer_service';
+    
     // 检查 admin_notes 字段是否存在
     let hasAdminNotes = false;
     try {
@@ -593,13 +598,15 @@ export const getProductionManagers = async (req: AuthRequest, res: Response) => 
     }
 
     let result;
-    if (hasAdminNotes) {
+    if (hasAdminNotes && isAdminOrSupport) {
+      // 管理员/客服：返回完整信息
       result = await pool.query(
         `SELECT id, username, company_name, contact_name, email, phone, assigned_order_types, admin_notes, created_at
          FROM users WHERE role = 'production_manager' AND is_active = true
          ORDER BY created_at DESC`
       );
     } else {
+      // 生产跟单或其他角色：只返回基本信息
       result = await pool.query(
         `SELECT id, username, company_name, contact_name, email, phone, assigned_order_types, created_at
          FROM users WHERE role = 'production_manager' AND is_active = true

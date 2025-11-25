@@ -42,3 +42,11 @@ export function emitReminderRemoved(reminderId: number) {
   });
 }
 
+export function emitOrderDeleted(orderId: number) {
+  broadcast({
+    type: 'order-deleted',
+    orderId,
+    timestamp: new Date().toISOString(),
+  });
+}
+

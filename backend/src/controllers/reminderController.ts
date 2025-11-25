@@ -2,8 +2,8 @@ import { Response } from 'express';
 import { pool } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
 import {
-  createNotificationsForUsers,
   getAllAdminUserIds,
+  getAdminAndSupportUserIds,
   createNotification,
 } from '../services/notificationService.js';
 import { getOrderDisplayNumberSimple, getOrderDisplayInfo } from '../utils/orderDisplayUtils.js';
@@ -14,7 +14,7 @@ import {
   canRespondReminder,
 } from '../services/permissionService.js';
 import { addOrderActivity } from '../services/activityService.js';
-import { emitReminderUpdated, emitReminderRemoved } from '../websocket/emitter.js';
+import { emitReminderUpdated, emitReminderRemoved, emitNotificationCreated } from '../websocket/emitter.js';
 
 const REMINDER_SNAPSHOT_QUERY = `
   SELECT 
@@ -48,15 +48,25 @@ export const createDeliveryReminder = async (
       return res.status(400).json({ error: '订单ID不能为空' });
     }
 
+    // 获取当前用户所属公司
+    const userCompanyResult = await pool.query(
+      `SELECT company_id 
+       FROM users 
+       WHERE id = $1`,
+      [user.userId]
+    );
+
+    const companyId = userCompanyResult.rows[0]?.company_id;
+
     // 验证订单属于当前客户的公司（同一公司的所有账号都可以访问）
     const orderResult = await pool.query(
       `SELECT o.id 
        FROM orders o
-       WHERE o.id = $1 AND o.company_id = (SELECT company_id FROM users WHERE id = $2)`,
-      [order_id, user.userId]
+       WHERE o.id = $1 AND o.company_id = $2`,
+      [order_id, companyId]
     );
 
-    if (orderResult.rows.length === 0) {
+    if (!companyId || orderResult.rows.length === 0) {
       return res.status(404).json({ error: '订单不存在或无权访问' });
     }
 
@@ -98,6 +108,7 @@ export const createDeliveryReminder = async (
          o.order_number, 
          o.customer_order_number, 
          o.assigned_to,
+         o.company_id,
          u.company_name, 
          u.contact_name,
          pm.id as production_manager_id,
@@ -134,8 +145,6 @@ export const createDeliveryReminder = async (
     // 3. 管理员/客服始终可以收到催单通知
     try {
       const reminderTypeText = reminder_type === 'urgent' ? '紧急催单' : '催单';
-      const { emitNotificationCreated } = await import('../websocket/emitter.js');
-      const { createNotification } = await import('../services/notificationService.js');
       
       // 获取所有有分配订单权限的用户（管理员和客服）
       const adminAndSupportResult = await pool.query(
@@ -233,7 +242,7 @@ export const createDeliveryReminder = async (
 
     res.status(201).json({
       message: '催货申请已提交',
-      reminder: result.rows[0],
+      reminder: snapshot || result.rows[0],
     });
   } catch (error) {
     console.error('创建催货记录错误:', error);
@@ -367,7 +376,7 @@ export const getDeliveryReminders = async (
       });
       return;
     } else if (user.role === 'production_manager') {
-      // 生产跟单：只能查看管理员派送的催货任务
+      // 生产跟单：可以查看管理员派送的催货任务，以及已分配订单的所有催单（包括客户创建的）
       const { 
         order_id,
         order_number,
@@ -381,13 +390,26 @@ export const getDeliveryReminders = async (
       } = req.query;
       const { parsePaginationParams } = await import('../utils/configHelpers.js');
       const { page, pageSize } = await parsePaginationParams(pageParam, pageSizeParam);
-      let whereConditions: string[] = [`dr.is_admin_assigned = true`, `dr.is_deleted = false`];
+      let whereConditions: string[] = [`dr.is_deleted = false`];
       params = [];
       let paramIndex = 1;
       
-      // 如果指定了assigned_to，则只显示分配给自己的
-      whereConditions.push(`(dr.assigned_to IS NULL OR dr.assigned_to = $${paramIndex++})`);
+      // 生产跟单可以查看：
+      // 1. 管理员派送的催单（is_admin_assigned = true）
+      // 2. 已分配给自己的催单（assigned_to = userId）
+      // 3. 已分配订单的所有催单（订单已分配给该生产跟单，无论催单是否分配）
+      whereConditions.push(`(
+        dr.is_admin_assigned = true 
+        OR dr.assigned_to = $${paramIndex}
+        OR EXISTS (
+          SELECT 1 FROM orders o 
+          LEFT JOIN order_assignments oa ON oa.order_id = o.id 
+          WHERE o.id = dr.order_id 
+            AND (o.assigned_to = $${paramIndex} OR oa.production_manager_id = $${paramIndex})
+        )
+      )`);
       params.push(user.userId);
+      paramIndex++;
 
       if (order_id) {
         whereConditions.push(`dr.order_id = $${paramIndex++}`);
@@ -672,6 +694,223 @@ export const respondToReminder = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// 生产跟单转交催货任务给其他生产跟单
+export const transferReminderToProductionManager = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+    const { assigned_to } = req.body;
+
+    // 只有生产跟单可以转交
+    if (user.role !== 'production_manager') {
+      return res.status(403).json({ error: '无权操作，只有生产跟单可以转交催单' });
+    }
+
+    // 检查催货记录是否存在
+    const reminderResult = await pool.query(
+      `SELECT dr.*, o.order_type, o.order_number, o.customer_order_number
+       FROM delivery_reminders dr
+       LEFT JOIN orders o ON dr.order_id = o.id
+       WHERE dr.id = $1 AND dr.is_deleted = false`,
+      [id]
+    );
+
+    if (reminderResult.rows.length === 0) {
+      return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    const reminder = reminderResult.rows[0];
+
+    // 检查订单是否已分配给当前生产跟单
+    const orderResult = await pool.query(
+      `SELECT o.assigned_to, oa.production_manager_id
+       FROM orders o
+       LEFT JOIN order_assignments oa ON oa.order_id = o.id AND oa.production_manager_id = $1
+       WHERE o.id = $2`,
+      [user.userId, reminder.order_id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: '订单不存在' });
+    }
+
+    const order = orderResult.rows[0];
+    const isOrderAssignedToMe = order.assigned_to === user.userId || order.production_manager_id === user.userId;
+
+    // 只有分配给当前生产跟单的催单或订单已分配给当前生产跟单的催单才能转交
+    if (reminder.assigned_to !== user.userId && !isOrderAssignedToMe) {
+      return res.status(403).json({ error: '无权转交此催单，只能转交分配给自己的催单或已分配订单的催单' });
+    }
+
+    // 已处理的催单不能转交
+    if (reminder.is_resolved) {
+      return res.status(400).json({ error: '已处理的催单不能转交' });
+    }
+
+    // 验证目标生产跟单
+    if (!assigned_to) {
+      return res.status(400).json({ error: '必须指定转交给哪个生产跟单' });
+    }
+
+    const targetUserResult = await pool.query(
+      `SELECT id, role, username, assigned_order_types FROM users WHERE id = $1 AND is_active = true`,
+      [assigned_to]
+    );
+
+    if (targetUserResult.rows.length === 0) {
+      return res.status(404).json({ error: '目标生产跟单不存在' });
+    }
+
+    const targetUser = targetUserResult.rows[0];
+
+    if (targetUser.role !== 'production_manager') {
+      return res.status(400).json({ error: '目标用户不是生产跟单' });
+    }
+
+    // 验证目标生产跟单是否有权限处理该订单类型
+    if (reminder.order_type && targetUser.assigned_order_types) {
+      const allowedTypes = Array.isArray(targetUser.assigned_order_types)
+        ? targetUser.assigned_order_types
+        : JSON.parse(targetUser.assigned_order_types);
+      if (allowedTypes.length > 0 && !allowedTypes.includes(reminder.order_type)) {
+        return res.status(400).json({
+          error: `目标生产跟单 ${targetUser.username} 无权处理 ${reminder.order_type} 类型订单`,
+          code: 'TARGET_PM_NO_PERMISSION',
+          data: {
+            target_user: {
+              id: targetUser.id,
+              username: targetUser.username,
+            },
+            order_type: reminder.order_type,
+          },
+        });
+      }
+    }
+
+    // 不能转交给自己
+    if (assigned_to === user.userId) {
+      return res.status(400).json({ error: '不能转交给自己' });
+    }
+
+    // 更新催货记录
+    const updateResult = await pool.query(
+      `UPDATE delivery_reminders 
+       SET assigned_to = $1, is_admin_assigned = false
+       WHERE id = $2
+       RETURNING *`,
+      [assigned_to, id]
+    );
+
+    const updatedReminder = updateResult.rows[0];
+
+    // 获取订单信息用于通知
+    const orderInfoResult = await pool.query(
+      `SELECT o.*, u.company_name, u.contact_name 
+       FROM orders o
+       LEFT JOIN users u ON o.customer_id = u.id
+       WHERE o.id = $1`,
+      [reminder.order_id]
+    );
+    const orderInfo = orderInfoResult.rows[0] || {};
+
+    // 获取当前用户信息
+    const currentUserResult = await pool.query(
+      `SELECT username FROM users WHERE id = $1`,
+      [user.userId]
+    );
+    const currentUserName = currentUserResult.rows[0]?.username || '生产跟单';
+
+    // 发送通知
+    try {
+      const { emitNotificationCreated } = await import('../websocket/emitter.js');
+
+      // 通知目标生产跟单
+      const displayNumber = getOrderDisplayNumberSimple(
+        {
+          order_number: orderInfo.order_number,
+          customer_order_number: orderInfo.customer_order_number,
+        },
+        'production_manager'
+      );
+      const orderInfoText = getOrderDisplayInfo(
+        {
+          order_number: orderInfo.order_number,
+          customer_order_number: orderInfo.customer_order_number,
+        },
+        'production_manager'
+      );
+
+      const targetNotification = await createNotification({
+        user_id: assigned_to,
+        type: 'assignment',
+        title: `催单转交：${displayNumber || '订单'}`,
+        content: `${currentUserName} 将催单转交给您处理。\n${orderInfoText}\n客户：${orderInfo.company_name || orderInfo.contact_name || '未知'}`,
+        related_id: reminder.order_id,
+        related_type: 'order',
+      });
+      emitNotificationCreated(targetNotification);
+
+      // 通知管理员（让他们知道转交情况）
+      const adminUsers = await getAllAdminUserIds();
+      for (const adminId of adminUsers) {
+        const adminDisplayNumber = getOrderDisplayNumberSimple(
+          {
+            order_number: orderInfo.order_number,
+            customer_order_number: orderInfo.customer_order_number,
+          },
+          'admin'
+        );
+        const adminNotification = await createNotification({
+          user_id: adminId,
+          type: 'reminder',
+          title: `催单转交：${adminDisplayNumber || '订单'}`,
+          content: `${currentUserName} 将催单转交给 ${targetUser.username} 处理。\n${orderInfoText}\n客户：${orderInfo.company_name || orderInfo.contact_name || '未知'}`,
+          related_id: reminder.order_id,
+          related_type: 'order',
+        });
+        emitNotificationCreated(adminNotification);
+      }
+    } catch (notificationError) {
+      console.error('创建转交通知失败:', notificationError);
+    }
+
+    // 记录操作日志
+    try {
+      await addOrderActivity({
+        orderId: reminder.order_id,
+        userId: user.userId,
+        actionType: 'reminder_transferred',
+        actionText: `将催单转交给 ${targetUser.username}`,
+        extraData: {
+          reminder_id: id,
+          from_production_manager_id: user.userId,
+          to_production_manager_id: assigned_to,
+          to_production_manager_name: targetUser.username,
+        },
+        isVisibleToCustomer: false,
+      });
+    } catch (activityError) {
+      console.error('记录转交操作日志失败:', activityError);
+    }
+
+    const snapshot = await fetchReminderSnapshot(updatedReminder.id);
+    if (snapshot) {
+      emitReminderUpdated(updatedReminder.id, snapshot);
+    }
+
+    res.json({
+      message: '催单转交成功',
+      reminder: updatedReminder,
+    });
+  } catch (error) {
+    console.error('转交催单错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
 // 管理员派送催货任务给生产跟单
 export const assignReminderToProductionManager = async (
   req: AuthRequest,
@@ -863,6 +1102,179 @@ export const updateAdminResponse = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('编辑管理员回复错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+};
+
+export const requestReminderTransferPermission = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+    const { target_pm_id, order_type, reason } = req.body;
+
+    if (user.role !== 'production_manager') {
+      return res.status(403).json({ error: '无权操作，仅生产跟单可以申请权限' });
+    }
+
+    if (!target_pm_id) {
+      return res.status(400).json({ error: '必须指定申请的目标生产跟单' });
+    }
+
+    const reminderResult = await pool.query(
+      `SELECT dr.*, o.order_number, o.customer_order_number, o.order_type
+       FROM delivery_reminders dr
+       LEFT JOIN orders o ON dr.order_id = o.id
+       WHERE dr.id = $1 AND dr.is_deleted = false`,
+      [id]
+    );
+
+    if (reminderResult.rows.length === 0) {
+      return res.status(404).json({ error: '催货记录不存在' });
+    }
+
+    const reminder = reminderResult.rows[0];
+
+    const orderAssignmentResult = await pool.query(
+      `SELECT o.assigned_to, oa.production_manager_id
+       FROM orders o
+       LEFT JOIN order_assignments oa ON oa.order_id = o.id AND oa.production_manager_id = $1
+       WHERE o.id = $2`,
+      [user.userId, reminder.order_id]
+    );
+
+    if (orderAssignmentResult.rows.length === 0) {
+      return res.status(404).json({ error: '订单不存在' });
+    }
+
+    const orderAssignment = orderAssignmentResult.rows[0];
+    const isOrderAssignedToMe =
+      orderAssignment.assigned_to === user.userId ||
+      orderAssignment.production_manager_id === user.userId;
+
+    if (reminder.assigned_to !== user.userId && !isOrderAssignedToMe) {
+      return res.status(403).json({ error: '无权申请权限，只能为自己负责的催单发起申请' });
+    }
+
+    const targetUserResult = await pool.query(
+      `SELECT id, username, role FROM users WHERE id = $1 AND is_active = true`,
+      [target_pm_id]
+    );
+
+    if (targetUserResult.rows.length === 0) {
+      return res.status(404).json({ error: '目标生产跟单不存在' });
+    }
+
+    const targetUser = targetUserResult.rows[0];
+
+    if (targetUser.role !== 'production_manager') {
+      return res.status(400).json({ error: '目标用户不是生产跟单' });
+    }
+
+    const pendingResult = await pool.query(
+      `SELECT id FROM reminder_permission_requests
+       WHERE reminder_id = $1
+         AND from_production_manager_id = $2
+         AND target_production_manager_id = $3
+         AND status = 'pending'
+       LIMIT 1`,
+      [id, user.userId, target_pm_id]
+    );
+
+    if (pendingResult.rows.length > 0) {
+      return res.status(409).json({
+        error: '已经提交过申请，请等待管理员处理',
+        code: 'PERMISSION_REQUEST_PENDING',
+      });
+    }
+
+    const requestedPermission = {
+      order_type: order_type || reminder.order_type || null,
+      reason: reason || null,
+    };
+
+    const insertResult = await pool.query(
+      `INSERT INTO reminder_permission_requests (
+        reminder_id,
+        order_id,
+        from_production_manager_id,
+        target_production_manager_id,
+        requested_permission,
+        status
+      ) VALUES ($1, $2, $3, $4, $5, 'pending')
+      RETURNING *`,
+      [
+        reminder.id,
+        reminder.order_id,
+        user.userId,
+        target_pm_id,
+        JSON.stringify(requestedPermission),
+      ]
+    );
+
+    const adminAndSupportIds = await getAdminAndSupportUserIds();
+    const displayNumber = getOrderDisplayNumberSimple(
+      {
+        order_number: reminder.order_number,
+        customer_order_number: reminder.customer_order_number,
+      },
+      'admin'
+    );
+    const orderInfoText = getOrderDisplayInfo(
+      {
+        order_number: reminder.order_number,
+        customer_order_number: reminder.customer_order_number,
+      },
+      'admin'
+    );
+
+    for (const adminId of adminAndSupportIds) {
+      try {
+        const notification = await createNotification({
+          user_id: adminId,
+          type: 'reminder',
+          title: `催单权限申请：${displayNumber || '订单'}`,
+          content: `生产跟单 ${user.username || '生产跟单'} 请求为 ${targetUser.username} 开通 ${
+            requestedPermission.order_type || '该订单'
+          } 权限。\n${orderInfoText}${
+            requestedPermission.reason ? `\n备注：${requestedPermission.reason}` : ''
+          }`,
+          related_id: reminder.order_id,
+          related_type: 'order',
+        });
+        emitNotificationCreated(notification);
+      } catch (notificationError) {
+        console.error('创建权限申请通知失败:', notificationError);
+      }
+    }
+
+    try {
+      await addOrderActivity({
+        orderId: reminder.order_id,
+        userId: user.userId,
+        actionType: 'permission_request_submitted',
+        actionText: `申请为 ${targetUser.username} 开通 ${
+          requestedPermission.order_type || '该订单'
+        } 权限`,
+        extraData: {
+          reminder_id: reminder.id,
+          target_production_manager_id: target_pm_id,
+          requested_permission: requestedPermission,
+        },
+        isVisibleToCustomer: false,
+      });
+    } catch (activityError) {
+      console.error('记录权限申请日志失败:', activityError);
+    }
+
+    res.json({
+      message: '已通知管理员，请等待权限处理',
+      request: insertResult.rows[0],
+    });
+  } catch (error) {
+    console.error('提交催单权限申请错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 };

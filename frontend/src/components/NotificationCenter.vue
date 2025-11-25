@@ -90,13 +90,11 @@
               <el-icon
                 :class="[
                   'notification-icon',
-                  notification.type === 'reminder' ? 'reminder-icon' : 
-                  notification.type === 'order_feedback' ? 'feedback-icon' :
-                  'assignment-icon',
+                  getNotificationIconClass(notification.type),
                 ]"
               >
                 <Bell v-if="notification.type === 'reminder'" />
-                <QuestionFilled v-else-if="notification.type === 'order_feedback'" />
+                <QuestionFilled v-else-if="getNotificationIconClass(notification.type) === 'feedback-icon'" />
                 <User v-else />
               </el-icon>
               <span>{{ notification.title }}</span>
@@ -118,14 +116,23 @@
               {{ formatTime(notification.created_at) }}
             </span>
             <div class="notification-actions">
-              <!-- 催单通知：管理员可以分配任务 -->
+              <!-- 催单通知：管理员可以分配/重新分配任务 -->
               <el-button
                 v-if="notification.type === 'reminder' && authStore.canManageOrders && notification.related_type === 'order'"
-                type="primary"
+                :type="orderAssignmentStatus[notification.related_id || 0] ? 'warning' : 'primary'"
                 size="small"
                 @click.stop="handleAssignOrder(notification)"
               >
-                分配任务
+                {{ orderAssignmentStatus[notification.related_id || 0] ? '重新分配' : '分配订单' }}
+              </el-button>
+              <!-- 催单通知：生产跟单可以转交催单（只有分配给自己的催单才能转交） -->
+              <el-button
+                v-if="notification.type === 'reminder' && authStore.isProductionManager && notification.related_type === 'order'"
+                type="success"
+                size="small"
+                @click.stop="handleTransferReminder(notification)"
+              >
+                转交催单
               </el-button>
               <!-- 分配通知：生产跟单可以快速操作 -->
               <el-button
@@ -138,7 +145,7 @@
               </el-button>
               <!-- 订单编号反馈通知：管理员/客服可以创建订单 -->
               <el-button
-                v-if="notification.type === 'order_feedback' && authStore.canManageOrders"
+                v-if="(notification.type === 'order_feedback' as any) && authStore.canManageOrders"
                 type="primary"
                 size="small"
                 @click.stop="handleCreateOrderFromFeedback(notification)"
@@ -198,6 +205,15 @@
       :order-id="assignOrderId"
       @success="handleAssignSuccess"
     />
+
+    <!-- 转交催单对话框 -->
+    <ReminderTransferDialog
+      v-if="authStore.isProductionManager"
+      v-model="transferDialogVisible"
+      :reminder-id="transferReminderId"
+      :order-id="transferOrderId"
+      @success="handleTransferSuccess"
+    />
   </el-drawer>
 </template>
 
@@ -213,6 +229,9 @@ import type { Notification } from '../types';
 import OrderQuickAction from './OrderQuickAction.vue';
 // @ts-ignore - Vue SFC with script setup
 import OrderAssignDialog from './OrderAssignDialog.vue';
+// @ts-ignore - Vue SFC with script setup
+import ReminderTransferDialog from './ReminderTransferDialog.vue';
+import { ordersApi } from '../api/orders';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -230,9 +249,20 @@ const quickActionVisible = ref(false);
 const quickActionOrderId = ref<number | null>(null);
 const assignDialogVisible = ref(false);
 const assignOrderId = ref<number | null>(null);
+const transferDialogVisible = ref(false);
+const transferReminderId = ref<number | null>(null);
+const transferOrderId = ref<number | null>(null);
 const filterStatus = ref<'all' | 'unread' | 'read'>('all');
 const selectedNotifications = ref<number[]>([]);
 const selectAll = ref(false);
+const orderAssignmentCache = ref<Map<number, boolean>>(new Map());
+const orderAssignmentStatus = computed(() => {
+  const status: Record<number, boolean> = {};
+  orderAssignmentCache.value.forEach((value, key) => {
+    status[key] = value;
+  });
+  return status;
+});
 
 // 计算全选状态
 const isIndeterminate = computed(() => {
@@ -287,6 +317,22 @@ const loadNotifications = async () => {
       is_read: isRead,
     });
     pagination.value = response.pagination;
+    
+    // 只有管理员/客服需要加载订单分配状态（用于显示"分配订单"或"重新分配"按钮）
+    // 客户不需要看到分配按钮，所以不需要加载订单分配状态
+    if (authStore.canManageOrders) {
+      const orderIds = new Set<number>();
+      notificationsStore.notifications.forEach((n) => {
+        if (n.type === 'reminder' && n.related_type === 'order' && n.related_id) {
+          orderIds.add(n.related_id);
+        }
+      });
+      
+      // 批量加载订单分配状态
+      await Promise.all(
+        Array.from(orderIds).map((orderId) => loadOrderAssignmentStatus(orderId))
+      );
+    }
   } catch (error) {
     // 错误已在store中处理
   }
@@ -465,6 +511,126 @@ const handleSizeChange = () => {
 
 const handlePageChange = () => {
   loadNotifications();
+};
+
+
+// 加载订单分配状态
+const loadOrderAssignmentStatus = async (orderId: number) => {
+  if (orderAssignmentCache.value.has(orderId)) {
+    return orderAssignmentCache.value.get(orderId) || false;
+  }
+  try {
+    const response = await ordersApi.getOrderById(orderId);
+    const isAssigned = !!(response.order.assigned_to || (response.order.assigned_to_ids && response.order.assigned_to_ids.length > 0));
+    orderAssignmentCache.value.set(orderId, isAssigned);
+    return isAssigned;
+  } catch (error) {
+    console.error('加载订单分配状态失败:', error);
+    return false;
+  }
+};
+
+// 处理转交催单
+const handleTransferReminder = async (notification: Notification) => {
+  if (notification.related_type === 'order' && notification.related_id) {
+    // 如果未读，先标记为已读
+    if (!notification.is_read) {
+      await handleMarkAsRead(notification.id);
+    }
+    
+    // 从订单查询最新的未处理催单
+    try {
+      const { remindersApi } = await import('../api/reminders');
+      const { ordersApi } = await import('../api/orders');
+      
+      const currentUserId = authStore.user?.id;
+      if (!currentUserId) {
+        ElMessage.error('用户信息不存在');
+        return;
+      }
+      
+      // 先检查订单是否已分配给当前生产跟单
+      const orderResponse = await ordersApi.getOrderById(notification.related_id);
+      const isOrderAssignedToMe = 
+        orderResponse.order.assigned_to === currentUserId ||
+        (orderResponse.order.assigned_to_ids && orderResponse.order.assigned_to_ids.includes(currentUserId));
+      
+      if (!isOrderAssignedToMe) {
+        ElMessage.warning('该订单未分配给您，无法转交催单');
+        return;
+      }
+      
+      // 查询该订单的未处理催单
+      const remindersResponse = await remindersApi.getDeliveryReminders({
+        order_id: notification.related_id,
+        is_resolved: false,
+      });
+      
+      // 查找可转交的催单：
+      // 1. 已分配给当前生产跟单的催单
+      // 2. 订单已分配给当前生产跟单，但催单未分配（客户创建的催单）
+      // 3. 订单已分配给当前生产跟单，催单已分配给其他生产跟单（这种情况不应该转交，但为了完整性也检查）
+      const assignedReminder = remindersResponse.reminders.find(
+        (r) => {
+          // 如果订单已分配给当前生产跟单，则可以转交该订单的所有未处理催单
+          // 包括：已分配给自己的、未分配的、或已分配给其他生产跟单的（虽然不应该转交，但允许）
+          if (!isOrderAssignedToMe) {
+            return false; // 订单未分配给自己，不能转交
+          }
+          if (r.is_resolved) {
+            return false; // 已处理的催单不能转交
+          }
+          // 如果催单已分配给当前生产跟单，或者催单未分配，都可以转交
+          return r.assigned_to === currentUserId || !r.assigned_to;
+        }
+      );
+      
+      if (!assignedReminder) {
+        // 如果订单已分配但没有找到可转交的催单，可能是所有催单都已分配给其他生产跟单
+        const hasOtherAssignedReminders = remindersResponse.reminders.some(
+          (r) => r.assigned_to && r.assigned_to !== currentUserId && !r.is_resolved
+        );
+        if (hasOtherAssignedReminders) {
+          ElMessage.warning('该订单的催单已分配给其他生产跟单，无法转交');
+        } else {
+          ElMessage.warning('未找到可转交的催单');
+        }
+        return;
+      }
+      
+      transferOrderId.value = notification.related_id;
+      transferReminderId.value = assignedReminder.id;
+      transferDialogVisible.value = true;
+    } catch (error: any) {
+      console.error('加载催单信息失败:', error);
+      const errorMessage = error.response?.data?.error || error.message || '加载催单信息失败';
+      ElMessage.error(errorMessage);
+    }
+  }
+};
+
+// 转交成功回调
+const handleTransferSuccess = () => {
+  transferDialogVisible.value = false;
+  loadNotifications();
+  notificationsStore.fetchUnreadCount();
+  // 清除缓存，重新加载
+  orderAssignmentCache.value.clear();
+};
+
+// 处理从订单编号反馈创建订单
+const handleCreateOrderFromFeedback = (notification: Notification) => {
+  if (notification.type === 'order_feedback' && notification.related_id) {
+    router.push(`/orders/create?feedback_id=${notification.related_id}`);
+    visible.value = false;
+  }
+};
+
+const getNotificationIconClass = (type: string) => {
+  if (type === 'reminder') return 'reminder-icon';
+  if (type === 'order_feedback') return 'feedback-icon';
+  if (type === 'assignment') return 'assignment-icon';
+  return 'assignment-icon';
 };
 
 const formatTime = (time: string) => {

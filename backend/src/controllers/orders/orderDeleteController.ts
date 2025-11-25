@@ -84,6 +84,10 @@ export const deleteOrder = async (req: AuthRequest, res: Response) => {
 
       await client.query('COMMIT');
 
+      // 发送实时推送通知订单已删除
+      const { emitOrderDeleted } = await import('../../websocket/emitter.js');
+      emitOrderDeleted(Number(id));
+
       res.json({
         message: '订单删除成功',
       });

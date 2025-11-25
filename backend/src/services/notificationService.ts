@@ -251,3 +251,11 @@ export const getAllAdminUserIds = async (): Promise<number[]> => {
   return result.rows.map((row) => row.id);
 };
 
+export const getAdminAndSupportUserIds = async (): Promise<number[]> => {
+  const result = await pool.query(
+    "SELECT id FROM users WHERE role IN ('admin', 'customer_service') AND is_active = true",
+    []
+  );
+  return result.rows.map((row) => row.id);
+};
+

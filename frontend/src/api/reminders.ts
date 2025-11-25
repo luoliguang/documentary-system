@@ -67,5 +67,20 @@ export const remindersApi = {
   }> => {
     return api.get(`/reminders/order/${orderId}/stats`);
   },
+
+  // 生产跟单转交催货任务给其他生产跟单
+  transferReminder: (
+    id: number,
+    data: { assigned_to: number }
+  ): Promise<{ message: string; reminder: DeliveryReminder }> => {
+    return api.post(`/reminders/${id}/transfer`, data);
+  },
+
+  requestTransferPermission: (
+    id: number,
+    data: { target_pm_id: number; order_type?: string; reason?: string }
+  ): Promise<{ message: string }> => {
+    return api.post(`/reminders/${id}/request-permission`, data);
+  },
 };
 

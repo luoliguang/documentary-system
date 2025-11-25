@@ -34,6 +34,7 @@
 import { ref, reactive, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { remindersApi } from '../api/reminders';
+import { useRemindersStore } from '../stores/reminders';
 
 interface Props {
   modelValue: boolean;
@@ -49,6 +50,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const loading = ref(false);
+const remindersStore = useRemindersStore();
 const form = reactive({
   reminder_type: 'normal' as 'normal' | 'urgent',
   message: '',
@@ -85,12 +87,15 @@ const handleSubmit = async () => {
 
   loading.value = true;
   try {
-    await remindersApi.createDeliveryReminder({
+    const response = await remindersApi.createDeliveryReminder({
       order_id: props.orderId,
       reminder_type: form.reminder_type,
       message: form.message || undefined,
     });
     ElMessage.success('催货申请已提交');
+    if (response?.reminder) {
+      remindersStore.upsertReminder(response.reminder);
+    }
     updateValue(false);
     emit('success');
   } catch (error: any) {

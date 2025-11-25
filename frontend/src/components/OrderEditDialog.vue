@@ -31,20 +31,60 @@
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.canManageOrders" label="客户" prop="customer_id">
+      <el-form-item v-if="authStore.canManageOrders" label="客户公司" prop="company_id">
         <el-select
-          v-model="form.customer_id"
-          placeholder="请选择客户"
+          v-model="form.company_id"
+          placeholder="请选择客户公司（可搜索公司名）"
           filterable
           style="width: 100%"
+          @change="handleCompanyChange"
+          @search="handleCompanySearch"
         >
           <el-option
-            v-for="customer in customers"
+            v-for="company in companies"
+            :key="company.id"
+            :label="`${company.company_name}${company.company_code ? ' (' + company.company_code + ')' : ''} (${company.user_count || 0}个账号, ${company.order_count || 0}个订单)`"
+            :value="company.id"
+          />
+        </el-select>
+        <div style="font-size: 12px; color: #909399; margin-top: 4px">
+          提示：切换客户公司后，请选择具体客户账号，系统会自动关联客户编号
+        </div>
+      </el-form-item>
+
+      <el-form-item
+        v-if="authStore.canManageOrders && form.company_id && companyCustomers.length > 0"
+        label="关联客户账号"
+        prop="customer_id"
+      >
+        <el-select
+          v-model="form.customer_id"
+          placeholder="请选择客户账号"
+          filterable
+          style="width: 100%"
+          @change="handleCustomerChange"
+        >
+          <el-option
+            v-for="customer in companyCustomers"
             :key="customer.id"
-            :label="`${customer.company_name || customer.username} (${customer.customer_code})`"
+            :label="`${customer.username}${customer.customer_code ? ' (' + customer.customer_code + ')' : ''}`"
             :value="customer.id"
           />
         </el-select>
+      </el-form-item>
+      <el-form-item
+        v-else-if="authStore.canManageOrders && form.company_id && companyCustomers.length === 0"
+        label="关联客户账号"
+      >
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+        >
+          <template #title>
+            <span>该公司暂无客户账号，请先创建客户账号</span>
+          </template>
+        </el-alert>
       </el-form-item>
 
       <el-form-item v-if="authStore.canManageOrders" label="订单类型" prop="order_type">
@@ -255,7 +295,8 @@ import { useOrdersStore } from '../stores/orders';
 import { useAuthStore } from '../stores/auth';
 import { useConfigOptions } from '../composables/useConfigOptions';
 import { ordersApi } from '../api/orders';
-import type { Order } from '../types';
+import { useCustomerCompaniesStore } from '../stores/customerCompanies';
+import type { Order, CustomerCompany, User } from '../types';
 
 interface Props {
   modelValue: boolean;
@@ -303,20 +344,27 @@ const updateLayout = () => {
 // 配置选项
 const { orderTypes, orderStatuses, loadOrderTypes, loadOrderStatuses } = useConfigOptions();
 
-// 客户列表
-const customers = ref<any[]>([]);
+// 客户公司与账号
+const customerCompaniesStore = useCustomerCompaniesStore();
+const manualCompanyOptions = ref<CustomerCompany[] | null>(null);
+const companies = computed(() => manualCompanyOptions.value ?? customerCompaniesStore.companies);
+const companyCustomers = ref<User[]>([]);
 
 const form = reactive<Partial<Order> & {
   order_number?: string;
   customer_order_number?: string;
+  company_id?: number;
   customer_id?: number;
+  customer_code?: string;
   order_date?: string;
   images: string[];
   shipping_tracking_numbers: Array<{ type: string; number: string; label?: string }>;
 }>({
   order_number: '',
   customer_order_number: '',
+  company_id: undefined,
   customer_id: undefined,
+  customer_code: '',
   status: 'pending' as Order['status'],
   is_completed: false,
   can_ship: false,
@@ -340,6 +388,12 @@ const uploadHeaders = computed(() => {
 });
 
 const rules: FormRules = {
+  company_id: [
+    { required: true, message: '请选择客户公司', trigger: 'change' },
+  ],
+  customer_id: [
+    { required: true, message: '请选择客户账号', trigger: 'change' },
+  ],
   status: [
     { required: true, message: '请选择订单状态', trigger: 'change' },
   ],
@@ -393,13 +447,89 @@ const formatDateForPicker = (date: string | null | undefined): string => {
   }
 };
 
+const loadCompanies = async (search?: string) => {
+  try {
+    const result = await customerCompaniesStore.fetchCompanies({
+      search,
+      force: !!search,
+    });
+    if (search) {
+      manualCompanyOptions.value = result;
+    } else {
+      manualCompanyOptions.value = null;
+    }
+  } catch (error) {
+    console.error('加载客户公司失败:', error);
+    ElMessage.error('加载客户公司失败');
+  }
+};
+
+const handleCompanySearch = (search: string) => {
+  if (search) {
+    loadCompanies(search);
+  } else {
+    loadCompanies();
+  }
+};
+
+const handleCustomerChange = (customerId?: number) => {
+  if (!customerId) {
+    form.customer_code = '';
+    return;
+  }
+  const customer = companyCustomers.value.find((c) => c.id === customerId);
+  if (customer) {
+    form.customer_code = customer.customer_code || '';
+  }
+};
+
+const loadCompanyCustomers = async (companyId?: number, preserveSelection = true) => {
+  if (!companyId) {
+    companyCustomers.value = [];
+    if (!preserveSelection) {
+      form.customer_id = undefined;
+      form.customer_code = '';
+    }
+    return;
+  }
+  try {
+    const response = await ordersApi.getCustomers({ company_id: companyId });
+    companyCustomers.value = response.customers;
+
+    if (companyCustomers.value.length === 0) {
+      form.customer_id = undefined;
+      form.customer_code = '';
+      return;
+    }
+
+    const existingCustomer = companyCustomers.value.some(
+      (customer) => customer.id === form.customer_id
+    );
+
+    if (!preserveSelection || !existingCustomer) {
+      form.customer_id = companyCustomers.value[0].id;
+    }
+
+    handleCustomerChange(form.customer_id);
+  } catch (error) {
+    console.error('加载客户账号失败:', error);
+    ElMessage.error('加载客户账号失败');
+  }
+};
+
+const handleCompanyChange = async (companyId?: number) => {
+  await loadCompanyCustomers(companyId, false);
+};
+
 watch(
   () => props.modelValue,
   (newVal) => {
     if (newVal && props.order && props.order.id) {
       form.order_number = props.order.order_number || '';
       form.customer_order_number = props.order.customer_order_number || '';
+      form.company_id = props.order.company_id;
       form.customer_id = props.order.customer_id;
+      form.customer_code = props.order.customer_code || '';
       form.status = props.order.status;
       form.is_completed = props.order.is_completed;
       form.can_ship = props.order.can_ship;
@@ -412,6 +542,11 @@ watch(
       form.shipping_tracking_numbers = props.order.shipping_tracking_numbers
         ? props.order.shipping_tracking_numbers.map((tracking) => ({ ...tracking }))
         : [];
+      if (props.order.company_id) {
+        loadCompanyCustomers(props.order.company_id, true);
+      } else {
+        companyCustomers.value = [];
+      }
     }
   },
   { immediate: true }
@@ -602,6 +737,10 @@ const removeTrackingNumber = (index: number) => {
 const buildUpdatePayload = (): Partial<Order> => {
   const payload = JSON.parse(JSON.stringify(form)) as Record<string, any>;
 
+  if ('company_id' in payload) {
+    delete payload.company_id;
+  }
+
   ['order_date', 'estimated_ship_date', 'actual_ship_date'].forEach((field) => {
     if (payload[field] === '') {
       payload[field] = null;
@@ -634,6 +773,10 @@ const buildUpdatePayload = (): Partial<Order> => {
     }
   }
 
+  if (payload.customer_code === '') {
+    delete payload.customer_code;
+  }
+
   return payload as Partial<Order>;
 };
 
@@ -661,23 +804,11 @@ const handleSubmit = async () => {
   });
 };
 
-// 加载客户列表
-const loadCustomers = async () => {
-if (!authStore.canManageOrders) return; // 只有管理权限的角色需要加载客户列表
-  
-  try {
-    const response = await ordersApi.getCustomers();
-    customers.value = response.customers;
-  } catch (error) {
-    console.error('加载客户列表失败:', error);
-  }
-};
-
 onMounted(() => {
   // 加载配置选项和客户列表
   loadOrderTypes();
   loadOrderStatuses();
-  loadCustomers();
+  loadCompanies();
   
   // 初始化布局
   updateLayout();

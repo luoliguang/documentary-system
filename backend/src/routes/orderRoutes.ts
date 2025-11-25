@@ -43,8 +43,8 @@ router.get('/customers/list', requireAdminOrSupport, getCustomers);
 // 获取所有客户公司列表（仅管理员）
 router.get('/companies/list', requireAdminOrSupport, getCustomerCompanies);
 
-// 获取所有生产跟单列表（仅管理员）
-router.get('/production-managers/list', requireAdminOrSupport, getProductionManagers);
+// 获取所有生产跟单列表（管理员、客服和生产跟单都可以访问，但返回数据不同）
+router.get('/production-managers/list', getProductionManagers);
 
 // 获取订单状态历史
 router.get('/:id/history', getOrderStatusHistory);

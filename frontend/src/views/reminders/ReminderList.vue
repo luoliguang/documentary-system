@@ -688,7 +688,7 @@ const handleDelete = async (reminder: DeliveryReminder) => {
 onMounted(() => {
   checkMobile();
   window.addEventListener('resize', checkMobile);
-  loadReminders();
+  loadReminders({ force: true });
 });
 
 onUnmounted(() => {

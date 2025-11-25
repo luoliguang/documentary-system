@@ -28,3 +28,12 @@ export const respondReminderSchema = z.object({
   is_resolved: z.boolean().optional(),
 });
 
+export const requestPermissionSchema = z.object({
+  target_pm_id: z.union([
+    z.number().int().positive('目标生产跟单ID必须是正整数'),
+    z.string().regex(/^\d+$/, '目标生产跟单ID必须是数字').transform(Number),
+  ]),
+  order_type: z.string().max(100).optional(),
+  reason: z.string().max(1000, '备注不能超过1000个字符').optional(),
+});
+

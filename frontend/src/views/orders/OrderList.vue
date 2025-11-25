@@ -27,7 +27,7 @@
               placeholder="输入工厂订单编号"
               clearable
               class="filter-input"
-              @keyup.enter="loadOrders"
+              @keyup.enter="triggerSearch"
             />
           </el-form-item>
           <el-form-item label="客户订单编号">
@@ -36,7 +36,7 @@
               placeholder="输入客户订单编号"
               clearable
               class="filter-input"
-              @keyup.enter="loadOrders"
+              @keyup.enter="triggerSearch"
             />
           </el-form-item>
           <el-form-item label="订单状态">
@@ -122,7 +122,7 @@
             </div>
           </el-form-item>
           <el-form-item class="filter-buttons">
-            <el-button type="primary" @click="loadOrders">查询</el-button>
+            <el-button type="primary" @click="triggerSearch">查询</el-button>
             <el-button @click="resetFilters">重置</el-button>
           </el-form-item>
         </el-form>
@@ -302,8 +302,21 @@
             <span class="notes-text" :title="row.notes">{{ row.notes || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
+            <div
+              v-if="authStore.isProductionManager"
+              class="pm-assignment-tag"
+            >
+              <el-tag
+                :type="getAssignmentDisplay(row).type"
+                size="small"
+                class="assignment-indicator"
+                :title="getAssignmentTooltip(row)"
+              >
+                {{ getAssignmentDisplay(row).text }}
+              </el-tag>
+            </div>
             <el-button
               type="primary"
               size="small"
@@ -385,6 +398,8 @@
           :get-order-assignment-count="getOrderAssignmentCount"
           :reminder-stats="authStore.isCustomer ? reminderStats : undefined"
           :get-reminder-countdown="getReminderCountdown"
+          :get-assignment-display="getAssignmentDisplay"
+          :get-assignment-tooltip="getAssignmentTooltip"
           @view="viewOrder"
           @quick-edit="handleQuickEdit"
           @complete="handleComplete"
@@ -599,6 +614,8 @@ const loadCompanyNames = async () => {
 onMounted(async () => {
   checkMobile();
   window.addEventListener('resize', checkMobile);
+  // 初始化实时推送
+  ordersStore.initRealtime();
   // 加载配置选项和客户公司列表
   await Promise.all([
     loadOrderTypes(),
@@ -635,6 +652,11 @@ const filters = reactive({
   estimated_ship_date_start: '' as string,
   estimated_ship_date_end: '' as string,
 });
+
+const triggerSearch = () => {
+  currentPage.value = 1;
+  loadOrders({ force: true });
+};
 
 // 同步 composable 的数据到 filters（用于兼容现有代码）
 watch(
@@ -717,6 +739,75 @@ const assignForm = reactive({
   primary_assigned_to: undefined as number | undefined,
   order_type: 'required' as 'required' | 'scattered' | 'photo',
 });
+const shouldForceReload = ref(true);
+
+const currentUserId = computed(() => authStore.user?.id ?? null);
+
+const getAssignmentIds = (order: Order): number[] => {
+  const baseIds =
+    order.assigned_to_ids && order.assigned_to_ids.length > 0
+      ? order.assigned_to_ids
+      : order.assigned_to
+      ? [order.assigned_to]
+      : [];
+  return Array.from(
+    new Set(baseIds.filter((id): id is number => typeof id === 'number' && id > 0))
+  );
+};
+
+const getAssignmentNames = (order: Order): string[] => {
+  if (order.assigned_team && order.assigned_team.length > 0) {
+    return order.assigned_team
+      .map((member) => member.admin_notes || member.username || '')
+      .filter(Boolean);
+  }
+  return order.assigned_to_names?.filter(Boolean) || [];
+};
+
+const getAssignmentDisplay = (order: Order) => {
+  const ids = getAssignmentIds(order);
+  const meId = currentUserId.value;
+  const assignedToMe =
+    meId != null && (ids.includes(meId) || order.assigned_to === meId);
+  const uniqueCount = ids.length;
+  const othersCount =
+    assignedToMe && meId != null
+      ? ids.filter((id) => id !== meId).length
+      : uniqueCount;
+
+  if (assignedToMe) {
+    return {
+      text:
+        othersCount > 0
+          ? `已分配给我（+${othersCount}人）`
+          : '已分配给我',
+      type: 'success' as const,
+    };
+  }
+
+  if (uniqueCount > 0) {
+    return {
+      text:
+        uniqueCount > 1
+          ? `已分配给其他人（${uniqueCount}人）`
+          : '已分配给其他人',
+      type: 'warning' as const,
+    };
+  }
+
+  return {
+    text: '未分配',
+    type: 'info' as const,
+  };
+};
+
+const getAssignmentTooltip = (order: Order) => {
+  const names = getAssignmentNames(order);
+  if (names.length === 0) {
+    return '';
+  }
+  return `协作成员：${names.join('、')}`;
+};
 
 // 催货统计管理
 const reminderStats = useReminderStats();
@@ -837,26 +928,37 @@ const buildEstimatedShipRange = () => {
   };
 };
 
-const loadOrders = async () => {
+type LoadOptions = { force?: boolean };
+
+const loadOrders = async (options?: LoadOptions) => {
   try {
     const { estimatedShipStart, estimatedShipEnd } = buildEstimatedShipRange();
 
-    await ordersStore.fetchOrders({
-      page: currentPage.value,
-      pageSize: pageSize.value,
-      order_number: filters.order_number || undefined,
-      customer_order_number: filters.customer_order_number || undefined,
-      status: filters.status === 'all' ? undefined : filters.status || undefined,
-      is_completed: filters.is_completed === 'all' ? undefined : (filters.is_completed as boolean | undefined),
-      company_name: filters.company_name || undefined,
-      estimated_ship_start: estimatedShipStart,
-      estimated_ship_end: estimatedShipEnd,
-    });
-    
+    await ordersStore.fetchOrders(
+      {
+        page: currentPage.value,
+        pageSize: pageSize.value,
+        order_number: filters.order_number || undefined,
+        customer_order_number: filters.customer_order_number || undefined,
+        status: filters.status === 'all' ? undefined : filters.status || undefined,
+        is_completed:
+          filters.is_completed === 'all'
+            ? undefined
+            : (filters.is_completed as boolean | undefined),
+        company_name: filters.company_name || undefined,
+        estimated_ship_start: estimatedShipStart,
+        estimated_ship_end: estimatedShipEnd,
+      },
+      {
+        force: options?.force ?? shouldForceReload.value,
+      }
+    );
+
     // 规范化所有订单的日期字段，去除时区信息，避免 el-date-picker 解析时发生偏移
-    ordersStore.orders.forEach(order => {
+    ordersStore.orders.forEach((order) => {
       if (order.estimated_ship_date) {
-        order.estimated_ship_date = normalizeDateTime(order.estimated_ship_date) || order.estimated_ship_date;
+        order.estimated_ship_date =
+          normalizeDateTime(order.estimated_ship_date) || order.estimated_ship_date;
       }
       if (!order.assigned_to_ids && order.assigned_to) {
         order.assigned_to_ids = [order.assigned_to];
@@ -867,39 +969,41 @@ const loadOrders = async () => {
         ];
       }
     });
-    
+
     // 如果是客户，加载每个订单的催货统计
+    // 使用 Promise.allSettled 确保即使某些订单统计获取失败，也不影响其他订单
     if (authStore.isCustomer) {
-      const promises = ordersStore.orders
-        .map(order => reminderStats.fetchReminderStats(order.id));
-      await Promise.all(promises);
-      
+      const promises = ordersStore.orders.map((order) =>
+        reminderStats.fetchReminderStats(order.id)
+      );
+      await Promise.allSettled(promises);
+
       // 启动倒计时（立即设置初始值，避免显示0）
-      ordersStore.orders.forEach(order => {
+      ordersStore.orders.forEach((order) => {
         const stats = reminderStats.getReminderStats(order.id);
         if (stats && stats.next_reminder_time) {
-          // 立即计算并设置初始剩余时间
           const initialRemaining = reminderStats.getRemainingSeconds(order.id);
           if (initialRemaining > 0) {
             reminderCountdowns.value.set(order.id, initialRemaining);
           }
-          // 启动倒计时
           reminderStats.startCountdown(order.id, (remaining) => {
             reminderCountdowns.value.set(order.id, remaining);
           });
         } else {
-          // 如果没有限制，设置为0
           reminderCountdowns.value.set(order.id, 0);
         }
       });
     }
-    
+
     // 加载订单相关的未读通知
     if (authStore.canManageOrders || authStore.isProductionManager) {
       await loadOrderNotifications();
     }
-  } catch (error) {
-    ElMessage.error('加载订单列表失败');
+  } catch (error: any) {
+    console.error('加载订单列表失败:', error);
+    ElMessage.error(error.response?.data?.error || '加载订单列表失败');
+  } finally {
+    shouldForceReload.value = false;
   }
 };
 
@@ -975,7 +1079,7 @@ const resetFilters = () => {
   filters.company_name = '';
   estimatedShipDateRange.reset();
   currentPage.value = 1;
-  loadOrders();
+  loadOrders({ force: true });
 };
 
 const viewOrder = (id: number) => {
@@ -991,7 +1095,7 @@ const handleComplete = async (id: number) => {
     });
     await ordersStore.completeOrder(id);
     ElMessage.success('订单已标记为完成');
-    loadOrders();
+    await loadOrders({ force: true });
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('操作失败');
@@ -1196,7 +1300,7 @@ const handleQuickEdit = (row: Order) => {
 };
 
 const handleEditSuccess = () => {
-  loadOrders();
+  loadOrders({ force: true });
 };
 
 const handleAssign = async (row: Order) => {
@@ -1282,7 +1386,7 @@ const submitAssign = async () => {
     });
     ElMessage.success('订单分配成功');
     assignDialogVisible.value = false;
-    await loadOrders();
+    await loadOrders({ force: true });
     
     // 刷新通知
     if (authStore.canManageOrders || authStore.isProductionManager) {
@@ -1313,7 +1417,7 @@ const handleDelete = async (row: Order) => {
       currentPage.value -= 1;
     }
     
-    loadOrders();
+    await loadOrders({ force: true });
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('删除订单失败');
@@ -1331,7 +1435,7 @@ const handlePageChange = () => {
 };
 
 onMounted(() => {
-  loadOrders();
+  loadOrders({ force: true });
 });
 </script>
 
@@ -1426,6 +1530,15 @@ onMounted(() => {
 .reminder-badge,
 .assignment-badge {
   margin-left: 4px;
+}
+
+.pm-assignment-tag {
+  margin-bottom: 6px;
+}
+
+.assignment-indicator {
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .order-thumbnail {

@@ -156,6 +156,18 @@ export const useOrdersStore = defineStore(
         if (currentOrder.value?.id === orderId) {
           currentOrder.value = { ...currentOrder.value, ...order };
         }
+      } else if (data.type === 'order-deleted') {
+        const { orderId } = data;
+        // 从列表中移除已删除的订单
+        orders.value = orders.value.filter((o) => o.id !== orderId);
+        // 如果当前查看的订单被删除，清空当前订单
+        if (currentOrder.value?.id === orderId) {
+          currentOrder.value = null;
+        }
+        // 更新分页总数
+        if (pagination.value.total > 0) {
+          pagination.value.total -= 1;
+        }
       }
     };
     

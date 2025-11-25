@@ -65,8 +65,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
           await fetchNotifications(lastFetchParams.value);
         }
       }
-    } catch (error) {
-      console.error('获取未读通知数量失败:', error);
+    } catch (error: any) {
+      // 401 错误可能是 token 还未设置或已过期，静默处理
+      // 其他错误才记录日志（但不显示错误消息，因为响应拦截器已经处理了）
+      if (error.response?.status !== 401) {
+        console.error('获取未读通知数量失败:', error);
+      }
+      // 401 错误时，不更新 unreadCount，保持当前值
     }
   };
 

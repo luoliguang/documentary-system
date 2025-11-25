@@ -14,6 +14,8 @@ export type ActionType =
   | 'note_added'
   | 'internal_note_added'
   | 'reminder_replied'
+  | 'reminder_transferred'
+  | 'permission_request_submitted'
   | 'completed'
   | 'can_ship'
   | 'shipped'
@@ -85,6 +87,7 @@ export async function addOrderActivity(
     const internalOnlyTypes: ActionType[] = [
       'internal_note_added',
       'updated', // 通用更新，默认不可见
+      'permission_request_submitted',
     ];
     
     if (customerVisibleTypes.includes(actionType)) {

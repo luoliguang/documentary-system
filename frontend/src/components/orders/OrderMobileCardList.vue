@@ -30,7 +30,22 @@
             </el-image>
             <div v-else class="image-slot empty">暂无制单图</div>
           </div>
-          <div class="order-number">{{ order.order_number }}</div>
+          <div class="order-number">
+            {{ order.order_number }}
+            <div
+              v-if="auth.isProductionManager"
+              class="mobile-assignment-tag"
+            >
+              <el-tag
+                :type="getAssignmentDisplay(order).type"
+                size="small"
+                class="assignment-indicator"
+                :title="getAssignmentTooltip(order)"
+              >
+                {{ getAssignmentDisplay(order).text }}
+              </el-tag>
+            </div>
+          </div>
           <div class="action-buttons" v-if="auth.canManageOrders">
             <el-button
               circle
@@ -149,10 +164,14 @@ withDefaults(
       formatRemainingTime: (seconds: number) => string;
     };
     getReminderCountdown: (orderId: number) => number;
+    getAssignmentDisplay: (order: Order) => { text: string; type: string };
+    getAssignmentTooltip: (order: Order) => string;
   }>(),
   {
     loading: false,
     reminderStats: undefined,
+    getAssignmentDisplay: () => ({ text: '', type: 'info' }),
+    getAssignmentTooltip: () => '',
   }
 );
 
@@ -324,6 +343,15 @@ const isUrgentStatus = (status: string): boolean => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-assignment-tag {
+  margin-top: 4px;
+}
+
+.assignment-indicator {
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .action-buttons {

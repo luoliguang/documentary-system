@@ -25,9 +25,14 @@ export function useReminderStats() {
       statsMap.value.set(orderId, stats);
       return stats;
     } catch (error: any) {
-      if (error.response?.status !== 404) {
+      // 404 错误是预期行为（订单可能不存在或无权访问），完全静默处理
+      // 403 错误也是预期行为（无权访问），完全静默处理
+      // 其他错误才记录日志（但不显示错误消息，因为响应拦截器已经处理了）
+      if (error.response?.status !== 404 && error.response?.status !== 403) {
         console.error('获取催货统计失败:', error);
       }
+      // 确保返回 null，表示没有统计信息
+      statsMap.value.delete(orderId);
       return null;
     }
   };
