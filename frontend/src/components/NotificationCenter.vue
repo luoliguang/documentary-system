@@ -143,6 +143,14 @@
               >
                 快速操作
               </el-button>
+              <el-button
+                v-if="notification.type === 'reminder' && (authStore.canManageReminders || authStore.isProductionManager) && notification.related_type === 'order'"
+                type="success"
+                size="small"
+                @click.stop="handleQuickAction(notification)"
+              >
+                快速操作
+              </el-button>
               <!-- 订单编号反馈通知：管理员/客服可以创建订单 -->
               <el-button
                 v-if="(notification.type === 'order_feedback' as any) && authStore.canManageOrders"
@@ -301,6 +309,7 @@ const pagination = ref({
 // 监听抽屉打开，加载通知
 watch(visible, (newVal) => {
   if (newVal) {
+    orderAssignmentCache.value.clear();
     loadNotifications();
   }
 });
@@ -321,6 +330,7 @@ const loadNotifications = async () => {
     // 只有管理员/客服需要加载订单分配状态（用于显示"分配订单"或"重新分配"按钮）
     // 客户不需要看到分配按钮，所以不需要加载订单分配状态
     if (authStore.canManageOrders) {
+      orderAssignmentCache.value.clear();
       const orderIds = new Set<number>();
       notificationsStore.notifications.forEach((n) => {
         if (n.type === 'reminder' && n.related_type === 'order' && n.related_id) {

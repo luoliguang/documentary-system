@@ -31,7 +31,7 @@
             <div v-else class="image-slot empty">暂无制单图</div>
           </div>
           <div class="order-number">
-            {{ order.order_number }}
+            <CopyText :text="order.order_number" :inline="false" />
             <div
               v-if="auth.isProductionManager"
               class="mobile-assignment-tag"
@@ -134,6 +134,8 @@
 
 <script setup lang="ts">
 import { Picture, EditPen, User, Right } from '@element-plus/icons-vue';
+// @ts-ignore
+import CopyText from '../common/CopyText.vue';
 import type { Order } from '../../types';
 
 interface AuthFlags {

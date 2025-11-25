@@ -169,11 +169,9 @@ const loadOrderData = async () => {
     // 加载订单类型
     await loadOrderTypes();
 
-    // 加载生产跟单列表
-    if (productionManagers.value.length === 0) {
-      const pmResponse = await ordersApi.getProductionManagers();
-      productionManagers.value = pmResponse.productionManagers;
-    }
+    // 每次加载都刷新生产跟单权限，确保实时
+    const pmResponse = await ordersApi.getProductionManagers({ force: true });
+    productionManagers.value = pmResponse.productionManagers;
   } catch (error) {
     ElMessage.error('加载订单信息失败');
   } finally {

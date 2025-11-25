@@ -81,6 +81,14 @@ const normalizeOrderPayload = (data: Partial<Order>) => {
   return cleaned;
 };
 
+interface GetProductionManagersOptions {
+  force?: boolean;
+}
+
+interface GetCustomerCompaniesOptions {
+  force?: boolean;
+}
+
 export const ordersApi = {
   // 获取订单列表
   getOrders: (params?: OrderQueryParams): Promise<OrdersResponse> => {
@@ -154,8 +162,12 @@ export const ordersApi = {
   },
 
   // 获取客户公司列表（仅管理员）
-  getCustomerCompanies: (params?: { search?: string }): Promise<{ companies: CustomerCompany[] }> => {
-    const canCache = shouldCache(params);
+  getCustomerCompanies: (
+    params?: { search?: string },
+    options?: GetCustomerCompaniesOptions
+  ): Promise<{ companies: CustomerCompany[] }> => {
+    const force = options?.force ?? false;
+    const canCache = shouldCache(params) && !force;
     const cacheKey = buildCacheKey('orders:companies', params);
     if (canCache) {
       const cached = cache.get<{ companies: CustomerCompany[] }>(cacheKey);
@@ -165,19 +177,22 @@ export const ordersApi = {
       const response = await resolvePromise<{ companies: CustomerCompany[] }>(
         api.get('/orders/companies/list', { params })
       );
-      if (canCache) {
-        cache.set(cacheKey, response, { ttl: LONG_TTL, persistent: true });
-      }
+      cache.set(cacheKey, response, { ttl: LONG_TTL, persistent: true });
       return response;
     };
     return request();
   },
 
   // 获取生产跟单列表（仅管理员）
-  getProductionManagers: (): Promise<{ productionManagers: any[] }> => {
+  getProductionManagers: (
+    options?: GetProductionManagersOptions
+  ): Promise<{ productionManagers: any[] }> => {
+    const force = options?.force ?? false;
     const cacheKey = 'orders:production-managers';
-    const cached = cache.get<{ productionManagers: any[] }>(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (!force) {
+      const cached = cache.get<{ productionManagers: any[] }>(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
     const request = async () => {
       const response = await resolvePromise<{ productionManagers: any[] }>(
         api.get('/orders/production-managers/list')

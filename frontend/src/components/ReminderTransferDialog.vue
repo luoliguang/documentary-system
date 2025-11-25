@@ -149,11 +149,9 @@ const loadData = async () => {
   loading.value = true;
   try {
     // 加载催单信息（如果需要）
-    // 加载生产跟单列表
-    if (productionManagers.value.length === 0) {
-      const pmResponse = await ordersApi.getProductionManagers();
-      productionManagers.value = pmResponse.productionManagers;
-    }
+    // 每次打开对话框都刷新生产跟单权限
+    const pmResponse = await ordersApi.getProductionManagers({ force: true });
+    productionManagers.value = pmResponse.productionManagers;
 
     // 加载订单信息获取订单类型
     const orderResponse = await ordersApi.getOrderById(props.orderId);

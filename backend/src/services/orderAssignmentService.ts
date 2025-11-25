@@ -126,6 +126,21 @@ export async function getOrderAssignmentsSummary(
   };
 }
 
+export async function ensureOrderAssignment(
+  orderId: number,
+  productionManagerId: number,
+  assignedBy: number | null = null,
+  client?: DBClient
+) {
+  const db = getClient(client);
+  await db.query(
+    `INSERT INTO order_assignments (order_id, production_manager_id, assigned_by, assigned_at)
+     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+     ON CONFLICT (order_id, production_manager_id) DO NOTHING`,
+    [orderId, productionManagerId, assignedBy]
+  );
+}
+
 export async function isOrderAssignedToUser(
   orderId: number,
   userId: number,

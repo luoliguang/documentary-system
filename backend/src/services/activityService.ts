@@ -25,6 +25,12 @@ export type ActionType =
   | 'images_updated'
   | 'tracking_numbers_updated';
 
+export const CUSTOMER_VISIBLE_ACTIVITY_TYPES: ActionType[] = [
+  'completed',
+  'can_ship',
+  'reminder_replied',
+];
+
 export interface OrderActivity {
   id: number;
   order_id: number;
@@ -67,37 +73,7 @@ export async function addOrderActivity(
   // 如果未指定，则根据操作类型决定
   let finalVisibleToCustomer = isVisibleToCustomer;
   if (isVisibleToCustomer === undefined) {
-    // 默认对客户可见的操作类型
-    const customerVisibleTypes: ActionType[] = [
-      'created',
-      'assigned',
-      'status_changed',
-      'completed',
-      'can_ship',
-      'shipped',
-      'note_added',
-      'customer_order_number_updated',
-      'estimated_ship_date_updated',
-      'images_updated',
-      'tracking_numbers_updated',
-      'follow_up_added', // 根据 is_visible_to_customer 字段决定
-      'reminder_replied',
-    ];
-    // 默认对客户不可见的操作类型
-    const internalOnlyTypes: ActionType[] = [
-      'internal_note_added',
-      'updated', // 通用更新，默认不可见
-      'permission_request_submitted',
-    ];
-    
-    if (customerVisibleTypes.includes(actionType)) {
-      finalVisibleToCustomer = true;
-    } else if (internalOnlyTypes.includes(actionType)) {
-      finalVisibleToCustomer = false;
-    } else {
-      // 默认可见（向后兼容）
-      finalVisibleToCustomer = true;
-    }
+    finalVisibleToCustomer = CUSTOMER_VISIBLE_ACTIVITY_TYPES.includes(actionType);
   }
 
   const result = await pool.query(
@@ -181,9 +157,10 @@ export async function getOrderActivities(
       LEFT JOIN users u ON a.user_id = u.id
       WHERE a.order_id = $1 
         AND a.is_visible_to_customer = true
+        AND a.action_type = ANY($2::text[])
       ORDER BY a.created_at DESC
     `;
-    params = [orderId];
+    params = [orderId, CUSTOMER_VISIBLE_ACTIVITY_TYPES];
   }
 
   const result = await pool.query(query, params);

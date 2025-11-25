@@ -13,21 +13,31 @@
       :label-width="labelWidth"
       class="order-edit-form"
     >
-      <el-form-item v-if="authStore.canManageOrders" label="工厂订单编号" prop="order_number">
+      <el-form-item
+        v-if="authStore.canManageOrders || isCustomerReadOnly"
+        label="工厂订单编号"
+        prop="order_number"
+      >
         <el-input
           v-model="form.order_number"
           placeholder="请输入工厂订单编号"
           clearable
           style="width: 100%"
+          :disabled="isFieldDisabled('order_number')"
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.canManageOrders" label="客户订单编号" prop="customer_order_number">
+      <el-form-item
+        v-if="authStore.canManageOrders || isCustomerReadOnly"
+        label="客户订单编号"
+        prop="customer_order_number"
+      >
         <el-input
           v-model="form.customer_order_number"
           placeholder="请输入客户订单编号"
           clearable
           style="width: 100%"
+          :disabled="isFieldDisabled('customer_order_number')"
         />
       </el-form-item>
 
@@ -50,6 +60,13 @@
         <div style="font-size: 12px; color: #909399; margin-top: 4px">
           提示：切换客户公司后，请选择具体客户账号，系统会自动关联客户编号
         </div>
+      </el-form-item>
+      <el-form-item v-else-if="canViewCompanyReadonly" label="客户公司">
+        <el-input
+          :model-value="props.order?.company_name || '未设置'"
+          disabled
+          placeholder="客户公司"
+        />
       </el-form-item>
 
       <el-form-item
@@ -87,8 +104,17 @@
         </el-alert>
       </el-form-item>
 
-      <el-form-item v-if="authStore.canManageOrders" label="订单类型" prop="order_type">
-        <el-select v-model="form.order_type" placeholder="请选择订单类型" style="width: 100%">
+      <el-form-item
+        v-if="authStore.canManageOrders || isCustomerReadOnly"
+        label="订单类型"
+        prop="order_type"
+      >
+        <el-select
+          v-model="form.order_type"
+          placeholder="请选择订单类型"
+          style="width: 100%"
+          :disabled="isFieldDisabled('order_type')"
+        >
           <el-option
             v-for="type in orderTypes"
             :key="type.value"
@@ -98,8 +124,17 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="authStore.canManageOrders" label="订单状态" prop="status">
-        <el-select v-model="form.status" placeholder="请选择状态" style="width: 100%">
+      <el-form-item
+        v-if="authStore.canManageOrders || isCustomerReadOnly"
+        label="订单状态"
+        prop="status"
+      >
+        <el-select
+          v-model="form.status"
+          placeholder="请选择状态"
+          style="width: 100%"
+          :disabled="isFieldDisabled('status')"
+        >
           <el-option
             v-for="status in orderStatuses"
             :key="status.value"
@@ -110,14 +145,17 @@
       </el-form-item>
 
       <el-form-item label="是否完成">
-        <el-switch v-model="form.is_completed" />
+        <el-switch v-model="form.is_completed" :disabled="isFieldDisabled('is_completed')" />
       </el-form-item>
 
       <el-form-item label="是否可以出货">
-        <el-switch v-model="form.can_ship" />
+        <el-switch v-model="form.can_ship" :disabled="isFieldDisabled('can_ship')" />
       </el-form-item>
 
-      <el-form-item v-if="authStore.canManageOrders" label="下单时间">
+      <el-form-item
+        v-if="authStore.canManageOrders || isCustomerReadOnly"
+        label="下单时间"
+      >
         <el-date-picker
           v-model="form.order_date"
           type="datetime"
@@ -128,6 +166,7 @@
           :disabled-date="disabledFutureDate"
           clearable
           popper-class="mobile-datetime-picker-popper"
+          :disabled="isFieldDisabled('order_date')"
         />
       </el-form-item>
 
@@ -141,10 +180,14 @@
           format="YYYY-MM-DD HH:mm"
           clearable
           popper-class="mobile-datetime-picker-popper"
+          :disabled="isFieldDisabled('estimated_ship_date')"
         />
       </el-form-item>
 
-      <el-form-item v-if="authStore.canManageOrders" label="实际出货日期">
+      <el-form-item
+        v-if="authStore.canManageOrders || isCustomerReadOnly"
+        label="实际出货日期"
+      >
         <el-date-picker
           v-model="form.actual_ship_date"
           type="date"
@@ -153,6 +196,7 @@
           value-format="YYYY-MM-DD"
           format="YYYY-MM-DD"
           clearable
+          :disabled="isFieldDisabled('actual_ship_date')"
         />
       </el-form-item>
 
@@ -162,6 +206,7 @@
           type="textarea"
           :rows="4"
           placeholder="请输入情况备注"
+          :disabled="isFieldDisabled('notes')"
         />
       </el-form-item>
 
@@ -349,6 +394,22 @@ const customerCompaniesStore = useCustomerCompaniesStore();
 const manualCompanyOptions = ref<CustomerCompany[] | null>(null);
 const companies = computed(() => manualCompanyOptions.value ?? customerCompaniesStore.companies);
 const companyCustomers = ref<User[]>([]);
+const canManageCompanies = computed(() => authStore.canManageOrders);
+const isProductionManagerOnly = computed(
+  () => authStore.isProductionManager && !authStore.canManageOrders
+);
+const isCustomerReadOnly = computed(
+  () => authStore.isCustomer && !authStore.canManageOrders
+);
+const canViewCompanyReadonly = computed(
+  () => isProductionManagerOnly.value || isCustomerReadOnly.value
+);
+const isFieldDisabled = (field: string) => {
+  if (!isCustomerReadOnly.value) {
+    return false;
+  }
+  return field !== 'customer_order_number';
+};
 
 const form = reactive<Partial<Order> & {
   order_number?: string;
@@ -448,6 +509,9 @@ const formatDateForPicker = (date: string | null | undefined): string => {
 };
 
 const loadCompanies = async (search?: string) => {
+  if (!canManageCompanies.value) {
+    return;
+  }
   try {
     const result = await customerCompaniesStore.fetchCompanies({
       search,
@@ -484,6 +548,9 @@ const handleCustomerChange = (customerId?: number) => {
 };
 
 const loadCompanyCustomers = async (companyId?: number, preserveSelection = true) => {
+  if (!canManageCompanies.value) {
+    return;
+  }
   if (!companyId) {
     companyCustomers.value = [];
     if (!preserveSelection) {
@@ -542,7 +609,7 @@ watch(
       form.shipping_tracking_numbers = props.order.shipping_tracking_numbers
         ? props.order.shipping_tracking_numbers.map((tracking) => ({ ...tracking }))
         : [];
-      if (props.order.company_id) {
+      if (props.order.company_id && canManageCompanies.value) {
         loadCompanyCustomers(props.order.company_id, true);
       } else {
         companyCustomers.value = [];
@@ -790,9 +857,20 @@ const handleSubmit = async () => {
     if (valid) {
       loading.value = true;
       try {
-        const payload = buildUpdatePayload();
-        await ordersStore.updateOrder(props.order!.id, payload);
-        ElMessage.success('订单更新成功');
+        if (isCustomerReadOnly.value) {
+          await ordersApi.updateCustomerOrderNumber(
+            props.order!.id,
+            form.customer_order_number || ''
+          );
+          ElMessage.success('客户订单编号更新成功');
+        } else {
+          const payload = buildUpdatePayload();
+          await ordersStore.updateOrder(props.order!.id, payload);
+          if (canManageCompanies.value) {
+            await customerCompaniesStore.refresh();
+          }
+          ElMessage.success('订单更新成功');
+        }
         updateValue(false);
         emit('success');
       } catch (error) {
@@ -808,7 +886,9 @@ onMounted(() => {
   // 加载配置选项和客户列表
   loadOrderTypes();
   loadOrderStatuses();
-  loadCompanies();
+  if (canManageCompanies.value) {
+    loadCompanies();
+  }
   
   // 初始化布局
   updateLayout();

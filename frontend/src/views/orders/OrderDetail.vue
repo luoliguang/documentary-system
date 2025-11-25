@@ -45,12 +45,17 @@
         <!-- 基本信息 -->
         <el-descriptions title="基本信息" :column="2" border>
           <el-descriptions-item label="订单编号">
-            {{ order.order_number }}
+            <CopyText :text="order.order_number" :inline="false" />
           </el-descriptions-item>
           <el-descriptions-item label="客户订单编号">
-            <div v-if="authStore.isCustomer" style="display: flex; align-items: center; gap: 8px;">
-              <span v-if="order.customer_order_number">{{ order.customer_order_number }}</span>
+            <div class="customer-number-row" :class="{ 'customer-number-row--editable': authStore.isCustomer }">
+              <CopyText
+                :text="order.customer_order_number"
+                :inline="false"
+                placeholder="-"
+              />
               <el-button
+                v-if="authStore.isCustomer"
                 type="primary"
                 size="small"
                 link
@@ -59,8 +64,6 @@
                 {{ order.customer_order_number ? '编辑' : '提交订单编号' }}
               </el-button>
             </div>
-            <span v-else-if="order.customer_order_number">{{ order.customer_order_number }}</span>
-            <span v-else>-</span>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusType(order.status)">
@@ -291,7 +294,12 @@ import FollowUpRecord from '../../components/FollowUpRecord.vue';
 import ReminderDialog from '../../components/ReminderDialog.vue';
 // @ts-ignore - Vue SFC with script setup
 import OrderActivityTimeline from '../../components/orders/OrderActivityTimeline.vue';
+// @ts-ignore - Vue SFC with script setup
+import CopyText from '../../components/common/CopyText.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
+
+const CUSTOMER_VISIBLE_ACTIVITY_TYPES = ['completed', 'can_ship', 'reminder_replied'] as const;
+const customerVisibleActivitySet = new Set<string>(CUSTOMER_VISIBLE_ACTIVITY_TYPES);
 
 const route = useRoute();
 const router = useRouter();
@@ -433,6 +441,11 @@ const loadOrder = async () => {
   loading.value = true;
   try {
     await ordersStore.fetchOrderById(id);
+    if (authStore.isCustomer && order.value?.activities) {
+      order.value.activities = order.value.activities.filter((activity: OrderActivity) =>
+        customerVisibleActivitySet.has(activity.action_type || '')
+      );
+    }
     const historyResponse = await ordersApi.getOrderStatusHistory(id);
     history.value = historyResponse.history;
     
@@ -546,6 +559,12 @@ onMounted(() => {
   if (orderId) {
     activityHandler = (data: any) => {
       if (data.type === 'order-activity-added' && data.activity?.order_id === orderId) {
+        if (
+          authStore.isCustomer &&
+          (!data.activity.action_type || !customerVisibleActivitySet.has(data.activity.action_type))
+        ) {
+          return;
+        }
         // 实时添加新活动
         if (order.value) {
           if (!order.value.activities) {
@@ -637,6 +656,13 @@ h4 {
 .tracking-number {
   font-family: 'Courier New', monospace;
   font-weight: bold;
+}
+
+.customer-number-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .copy-icon {

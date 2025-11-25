@@ -118,6 +118,11 @@ export interface DeliveryReminder {
   company_name?: string;
   contact_name?: string;
   images?: string[]; // 订单图片URL数组
+  last_transferred_at?: string;
+  last_transferred_by?: number;
+  last_transferred_to?: number;
+  last_transferred_by_name?: string;
+  last_transferred_to_name?: string;
 }
 
 // 订单状态历史类型

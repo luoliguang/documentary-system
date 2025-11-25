@@ -160,10 +160,10 @@
         class="desktop-table"
         style="width: 100%"
       >
-        <el-table-column prop="order_number" label="工厂订单编号" width="180">
+        <el-table-column label="工厂订单编号" width="220">
           <template #default="{ row }">
             <div class="order-number-cell">
-              <span>{{ row.order_number }}</span>
+              <CopyText :text="row.order_number" />
               <el-badge
                 v-if="getOrderReminderCount(row.id) > 0"
                 :value="getOrderReminderCount(row.id)"
@@ -201,7 +201,11 @@
             <span v-else class="no-image">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="customer_order_number" label="客户订单编号" width="180" />
+        <el-table-column label="客户订单编号" width="220">
+          <template #default="{ row }">
+            <CopyText :text="row.customer_order_number" placeholder="-" />
+          </template>
+        </el-table-column>
         <el-table-column
           v-if="authStore.canManageOrders"
           prop="company_name"
@@ -548,6 +552,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Picture, QuestionFilled } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useOrdersStore } from '../../stores/orders';
+import { useCustomerCompaniesStore } from '../../stores/customerCompanies';
 import { useNotificationsStore } from '../../stores/notifications';
 import { ordersApi } from '../../api/orders';
 import { useConfigOptions } from '../../composables/useConfigOptions';
@@ -560,6 +565,8 @@ import ReminderDialog from '../../components/ReminderDialog.vue';
 import OrderEditDialog from '../../components/OrderEditDialog.vue';
 // @ts-ignore - Vue SFC with script setup
 import OrderNumberFeedbackDialog from '../../components/OrderNumberFeedbackDialog.vue';
+// @ts-ignore - Vue SFC with script setup
+import CopyText from '../../components/common/CopyText.vue';
 import type { Order } from '../../types';
 
 const router = useRouter();
@@ -571,6 +578,7 @@ const authFlags = computed(() => ({
   isCustomer: authStore.isCustomer,
 }));
 const ordersStore = useOrdersStore();
+const customerCompaniesStore = useCustomerCompaniesStore();
 const notificationsStore = useNotificationsStore();
 
 // 订单相关的未读通知映射
@@ -1299,8 +1307,9 @@ const handleQuickEdit = (row: Order) => {
   editDialogVisible.value = true;
 };
 
-const handleEditSuccess = () => {
-  loadOrders({ force: true });
+const handleEditSuccess = async () => {
+  await loadOrders({ force: true });
+  await customerCompaniesStore.refresh();
 };
 
 const handleAssign = async (row: Order) => {
@@ -1315,14 +1324,12 @@ const handleAssign = async (row: Order) => {
   assignForm.order_type = (row.order_type || 'required') as 'required' | 'scattered' | 'photo';
   assignDialogVisible.value = true;
   
-  // 加载生产跟单列表
-  if (productionManagers.value.length === 0) {
-    try {
-      const response = await ordersApi.getProductionManagers();
-      productionManagers.value = response.productionManagers;
-    } catch (error) {
-      ElMessage.error('加载生产跟单列表失败');
-    }
+  // 每次打开都刷新生产跟单权限，确保最新
+  try {
+    const response = await ordersApi.getProductionManagers({ force: true });
+    productionManagers.value = response.productionManagers;
+  } catch (error) {
+    ElMessage.error('加载生产跟单列表失败');
   }
 };
 
@@ -1418,6 +1425,7 @@ const handleDelete = async (row: Order) => {
     }
     
     await loadOrders({ force: true });
+    await customerCompaniesStore.refresh();
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('删除订单失败');

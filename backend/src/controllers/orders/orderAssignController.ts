@@ -245,7 +245,7 @@ export const assignOrderToProductionManager = async (
           assigned_to_ids: current,
           assigned_to_names: pmNames,
         },
-        isVisibleToCustomer: true,
+        isVisibleToCustomer: false,
       });
     } else if (removed.length > 0) {
       await addOrderActivity({
@@ -256,7 +256,7 @@ export const assignOrderToProductionManager = async (
         extraData: {
           removed_ids: removed,
         },
-        isVisibleToCustomer: true,
+        isVisibleToCustomer: false,
       });
     }
 

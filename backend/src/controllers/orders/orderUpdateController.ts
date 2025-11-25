@@ -303,6 +303,8 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
     }> = [];
     
     if (status && status !== oldOrder.status) {
+      const customerVisibleStatus =
+        status === ORDER_STATUS.COMPLETED || status === ORDER_STATUS.SHIPPED;
       activitiesToCreate.push({
         orderId: Number(id),
         userId: user.userId,
@@ -312,7 +314,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
           old_status: oldOrder.status,
           new_status: status,
         },
-        isVisibleToCustomer: true,
+        isVisibleToCustomer: customerVisibleStatus,
       });
     }
     
@@ -347,7 +349,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
           ? `预计出货日期：${new Date(estimated_ship_date).toLocaleDateString('zh-CN')}`
           : '清空预计出货日期',
         extraData: { estimated_ship_date },
-        isVisibleToCustomer: true,
+        isVisibleToCustomer: false,
       });
     }
     
@@ -358,7 +360,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
         actionType: 'note_added',
         actionText: notes ? `添加备注：${notes}` : '清空备注',
         extraData: { notes },
-        isVisibleToCustomer: true,
+        isVisibleToCustomer: false,
       });
     }
     
@@ -382,7 +384,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
           ? `客户订单编号：${customer_order_number}`
           : '清空客户订单编号',
         extraData: { customer_order_number },
-        isVisibleToCustomer: true,
+        isVisibleToCustomer: false,
       });
     }
     
@@ -414,7 +416,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
             added_count: addedCount,
             removed_count: removedCount,
           },
-          isVisibleToCustomer: true,
+          isVisibleToCustomer: false,
         });
       }
     }
@@ -433,7 +435,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
             ? `更新发货单号（${trackingCount}个）`
             : '清空发货单号',
           extraData: { tracking_count: trackingCount },
-          isVisibleToCustomer: true,
+        isVisibleToCustomer: false,
         });
       }
     }
@@ -481,7 +483,7 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
           updated_fields: fieldNames,
           update_count: fieldNames.length,
         },
-        isVisibleToCustomer: true, // 批量更新对客户可见
+        isVisibleToCustomer: false,
       });
     }
     
@@ -603,7 +605,7 @@ export const updateCustomerOrderNumber = async (
       actionType: 'customer_order_number_updated',
       actionText: `客户提交订单编号：${customer_order_number}`,
       extraData: { customer_order_number },
-      isVisibleToCustomer: true,
+      isVisibleToCustomer: false,
     });
     
     // 实时推送

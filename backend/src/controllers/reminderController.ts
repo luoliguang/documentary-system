@@ -14,6 +14,7 @@ import {
   canRespondReminder,
 } from '../services/permissionService.js';
 import { addOrderActivity } from '../services/activityService.js';
+import { ensureOrderAssignment } from '../services/orderAssignmentService.js';
 import { emitReminderUpdated, emitReminderRemoved, emitNotificationCreated } from '../websocket/emitter.js';
 
 const REMINDER_SNAPSHOT_QUERY = `
@@ -23,10 +24,14 @@ const REMINDER_SNAPSHOT_QUERY = `
     o.customer_order_number,
     o.images,
     u.company_name,
-    u.contact_name
+    u.contact_name,
+    transfer_by.username AS last_transferred_by_name,
+    transfer_to.username AS last_transferred_to_name
   FROM delivery_reminders dr
   LEFT JOIN orders o ON dr.order_id = o.id
   LEFT JOIN users u ON dr.customer_id = u.id
+  LEFT JOIN users transfer_by ON dr.last_transferred_by = transfer_by.id
+  LEFT JOIN users transfer_to ON dr.last_transferred_to = transfer_to.id
   WHERE dr.id = $1
 `;
 
@@ -340,10 +345,14 @@ export const getDeliveryReminders = async (
           o.customer_code,
           o.images,
           u.company_name,
-          u.contact_name
+          u.contact_name,
+          transfer_by.username AS last_transferred_by_name,
+          transfer_to.username AS last_transferred_to_name
         FROM delivery_reminders dr
         LEFT JOIN orders o ON dr.order_id = o.id
         LEFT JOIN users u ON dr.customer_id = u.id
+        LEFT JOIN users transfer_by ON dr.last_transferred_by = transfer_by.id
+        LEFT JOIN users transfer_to ON dr.last_transferred_to = transfer_to.id
         ${whereClause}
         ORDER BY dr.created_at DESC
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
@@ -458,10 +467,14 @@ export const getDeliveryReminders = async (
           o.customer_code,
           o.images,
           u.company_name,
-          u.contact_name
+          u.contact_name,
+          transfer_by.username AS last_transferred_by_name,
+          transfer_to.username AS last_transferred_to_name
         FROM delivery_reminders dr
         LEFT JOIN orders o ON dr.order_id = o.id
         LEFT JOIN users u ON dr.customer_id = u.id
+        LEFT JOIN users transfer_by ON dr.last_transferred_by = transfer_by.id
+        LEFT JOIN users transfer_to ON dr.last_transferred_to = transfer_to.id
         ${whereClause}
         ORDER BY dr.created_at DESC
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
@@ -546,10 +559,14 @@ export const getDeliveryReminders = async (
           dr.*,
           o.order_number,
           o.customer_order_number,
-          o.images
+          o.images,
+          transfer_by.username AS last_transferred_by_name,
+          transfer_to.username AS last_transferred_to_name
         FROM delivery_reminders dr
         LEFT JOIN orders o ON dr.order_id = o.id
         LEFT JOIN users u ON dr.customer_id = u.id
+        LEFT JOIN users transfer_by ON dr.last_transferred_by = transfer_by.id
+        LEFT JOIN users transfer_to ON dr.last_transferred_to = transfer_to.id
         ${whereClause}
         ORDER BY dr.created_at DESC
       `;
@@ -798,10 +815,14 @@ export const transferReminderToProductionManager = async (
     // 更新催货记录
     const updateResult = await pool.query(
       `UPDATE delivery_reminders 
-       SET assigned_to = $1, is_admin_assigned = false
-       WHERE id = $2
+       SET assigned_to = $1,
+           is_admin_assigned = false,
+           last_transferred_at = CURRENT_TIMESTAMP,
+           last_transferred_by = $2,
+           last_transferred_to = $1
+       WHERE id = $3
        RETURNING *`,
-      [assigned_to, id]
+      [assigned_to, user.userId, id]
     );
 
     const updatedReminder = updateResult.rows[0];
@@ -815,6 +836,8 @@ export const transferReminderToProductionManager = async (
       [reminder.order_id]
     );
     const orderInfo = orderInfoResult.rows[0] || {};
+
+    await ensureOrderAssignment(reminder.order_id, assigned_to, user.userId);
 
     // 获取当前用户信息
     const currentUserResult = await pool.query(
@@ -889,6 +912,7 @@ export const transferReminderToProductionManager = async (
           from_production_manager_id: user.userId,
           to_production_manager_id: assigned_to,
           to_production_manager_name: targetUser.username,
+          transferred_at: updatedReminder.last_transferred_at,
         },
         isVisibleToCustomer: false,
       });

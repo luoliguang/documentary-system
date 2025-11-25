@@ -34,7 +34,10 @@ export const useCustomerCompaniesStore = defineStore('customerCompanies', () => 
     }
 
     try {
-      const response = await ordersApi.getCustomerCompanies(search ? { search } : undefined);
+      const response = await ordersApi.getCustomerCompanies(
+        search ? { search } : undefined,
+        { force }
+      );
       if (!search) {
         companies.value = response.companies;
         lastFetchedAt.value = Date.now();

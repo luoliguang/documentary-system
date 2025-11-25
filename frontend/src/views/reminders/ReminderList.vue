@@ -140,8 +140,16 @@
         class="desktop-table"
         style="width: 100%"
       >
-        <el-table-column prop="order_number" label="工厂订单编号" width="180" />
-        <el-table-column prop="customer_order_number" label="客户订单编号" width="180" />
+        <el-table-column label="工厂订单编号" width="200">
+          <template #default="{ row }">
+            <CopyText :text="row.order_number" />
+          </template>
+        </el-table-column>
+        <el-table-column label="客户订单编号" width="200">
+          <template #default="{ row }">
+            <CopyText :text="row.customer_order_number" placeholder="-" />
+          </template>
+        </el-table-column>
         <el-table-column label="制单表" width="80" align="center">
           <template #default="{ row }">
             <el-image
@@ -179,6 +187,23 @@
         </el-table-column>
         <el-table-column prop="message" label="催货消息" min-width="200" show-overflow-tooltip />
         <el-table-column prop="admin_response" :label="authStore.isCustomer ? '管理员/生产跟单回复' : '管理员回复'" min-width="200" show-overflow-tooltip />
+        <el-table-column
+          v-if="!authStore.isCustomer"
+          label="转交信息"
+          min-width="240"
+        >
+          <template #default="{ row }">
+            <div v-if="row.last_transferred_to_name" class="transfer-info">
+              <el-tag type="info" size="small">已转交</el-tag>
+              <div class="transfer-meta">
+                <span>给：{{ row.last_transferred_to_name }}</span>
+                <span>操作者：{{ row.last_transferred_by_name || '系统' }}</span>
+                <span>时间：{{ formatDate(row.last_transferred_at) }}</span>
+              </div>
+            </div>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="is_resolved" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.is_resolved ? 'success' : 'info'">
@@ -227,6 +252,15 @@
               回复
             </el-button>
             <el-button
+              v-if="(authStore.canManageReminders || authStore.isProductionManager) && row.order_id"
+              type="success"
+              size="small"
+              link
+              @click="openQuickAction(row.order_id)"
+            >
+              快速操作
+            </el-button>
+            <el-button
               v-if="authStore.canManageReminders || (authStore.isCustomer && row.customer_id === authStore.user?.id)"
               type="danger"
               size="small"
@@ -266,15 +300,21 @@
               </el-image>
               <div v-else class="no-image-mobile">-</div>
             </div>
-            <div class="card-title-section">
-              <div class="order-number">{{ reminder.order_number }}</div>
-              <div class="customer-order-number" v-if="reminder.customer_order_number">
-                客户编号：{{ reminder.customer_order_number }}
-              </div>
-              <div class="company-name" v-if="authStore.canManageReminders && reminder.company_name">
-                {{ reminder.company_name }}
-              </div>
+          <div class="card-title-section">
+            <div class="order-number">
+              <CopyText :text="reminder.order_number" :inline="false" />
             </div>
+            <div class="customer-order-number" v-if="reminder.customer_order_number">
+              <CopyText
+                :text="reminder.customer_order_number"
+                :inline="false"
+                label="客户编号"
+              />
+            </div>
+            <div class="company-name" v-if="authStore.canManageReminders && reminder.company_name">
+              {{ reminder.company_name }}
+            </div>
+          </div>
             <div class="card-badges">
               <el-tag :type="reminder.reminder_type === 'urgent' ? 'danger' : 'warning'" size="small">
                 {{ reminder.reminder_type === 'urgent' ? '紧急' : '普通' }}
@@ -297,6 +337,16 @@
             <div class="card-row">
               <span class="label">创建时间：</span>
               <span class="value">{{ formatDate(reminder.created_at) }}</span>
+            </div>
+            <div
+              v-if="!authStore.isCustomer && reminder.last_transferred_to_name"
+              class="card-row transfer-info-mobile"
+            >
+              <span class="label">转交：</span>
+              <span class="value">
+                给 {{ reminder.last_transferred_to_name }}
+                （{{ reminder.last_transferred_by_name || '系统' }} 于 {{ formatDate(reminder.last_transferred_at) }}）
+              </span>
             </div>
             <div v-if="authStore.isCustomer && reminder.resolved_at" class="card-row">
               <span class="label">回复时间：</span>
@@ -328,6 +378,14 @@
               @click="handleRespond(reminder)"
             >
               回复
+            </el-button>
+            <el-button
+              v-if="(authStore.canManageReminders || authStore.isProductionManager) && reminder.order_id"
+              type="success"
+              size="small"
+              @click="openQuickAction(reminder.order_id)"
+            >
+              快速操作
             </el-button>
             <el-button
               v-if="authStore.canManageReminders || (authStore.isCustomer && reminder.customer_id === authStore.user?.id)"
@@ -423,6 +481,13 @@
       @success="handleFeedbackSuccess"
     />
   </div>
+
+  <OrderQuickAction
+    v-if="authStore.canManageReminders || authStore.isProductionManager"
+    v-model="quickActionVisible"
+    :order-id="quickActionOrderId"
+    @success="handleQuickActionSuccess"
+  />
 </template>
 
 <script setup lang="ts">
@@ -436,6 +501,10 @@ import { useRemindersStore } from '../../stores/reminders';
 import type { DeliveryReminder } from '../../types';
 // @ts-ignore - Vue SFC with script setup
 import OrderNumberFeedbackDialog from '../../components/OrderNumberFeedbackDialog.vue';
+// @ts-ignore - Vue SFC with script setup
+import OrderQuickAction from '../../components/OrderQuickAction.vue';
+// @ts-ignore - Vue SFC with script setup
+import CopyText from '../../components/common/CopyText.vue';
 
 const authStore = useAuthStore();
 const remindersStore = useRemindersStore();
@@ -449,6 +518,8 @@ const showSearchForm = ref(window.innerWidth > 768);
 const editMessageDialogVisible = ref(false);
 const editResponseDialogVisible = ref(false);
 const feedbackDialogVisible = ref(false);
+const quickActionVisible = ref(false);
+const quickActionOrderId = ref<number | null>(null);
 
 // 搜索表单
 // 使用手机端日期范围 composable
@@ -526,7 +597,7 @@ const editResponseForm = ref({
   admin_response: '',
 });
 
-const formatDate = (date: string) => {
+const formatDate = (date?: string | null) => {
   if (!date) return '-';
   return new Date(date).toLocaleString('zh-CN');
 };
@@ -685,6 +756,16 @@ const handleDelete = async (reminder: DeliveryReminder) => {
   }
 };
 
+const openQuickAction = (orderId: number) => {
+  quickActionOrderId.value = orderId;
+  quickActionVisible.value = true;
+};
+
+const handleQuickActionSuccess = () => {
+  quickActionVisible.value = false;
+  loadReminders({ force: true });
+};
+
 onMounted(() => {
   checkMobile();
   window.addEventListener('resize', checkMobile);
@@ -725,6 +806,20 @@ onUnmounted(() => {
 .no-image {
   color: #c0c4cc;
   font-size: 14px;
+}
+
+.transfer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transfer-meta {
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* 桌面端表格显示 */
@@ -846,6 +941,14 @@ onUnmounted(() => {
   color: #303133;
   flex: 1;
   word-break: break-all;
+}
+
+.transfer-info-mobile {
+  flex-direction: column;
+}
+
+.transfer-info-mobile .value {
+  display: block;
 }
 
 .card-actions {

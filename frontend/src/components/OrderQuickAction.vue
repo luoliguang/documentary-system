@@ -16,11 +16,23 @@
         :label-position="isMobile ? 'top' : 'right'"
       >
         <el-form-item label="订单编号">
-          <el-input :value="order.order_number" readonly />
+          <CopyText :text="order.order_number" :inline="false" />
         </el-form-item>
         <el-form-item label="客户订单编号">
-          <el-input :value="order.customer_order_number || '-'" readonly />
+          <CopyText :text="order.customer_order_number" :inline="false" placeholder="-" />
         </el-form-item>
+        <div v-if="order.images && order.images.length" class="quick-action-images">
+          <el-image
+            v-for="(image, index) in order.images"
+            :key="index"
+            :src="image"
+            :preview-src-list="order.images"
+            :initial-index="index"
+            fit="cover"
+            class="quick-action-image"
+            :preview-teleported="true"
+          />
+        </div>
         <el-form-item label="是否完成">
           <el-switch v-model="form.is_completed" />
         </el-form-item>
@@ -74,6 +86,8 @@ import { ordersApi } from '../api/orders';
 import { followUpsApi } from '../api/followUps';
 import { useNotificationsStore } from '../stores/notifications';
 import type { Order } from '../types';
+// @ts-ignore
+import CopyText from './common/CopyText.vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -263,6 +277,21 @@ onUnmounted(() => {
 <style scoped>
 .quick-action-dialog :deep(.el-dialog__body) {
   padding-top: 10px;
+}
+
+.quick-action-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.quick-action-image {
+  width: 100%;
+  height: 90px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #ebeef5;
 }
 
 @media (max-width: 768px) {

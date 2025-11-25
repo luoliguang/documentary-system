@@ -172,7 +172,7 @@ export const createOrder = asyncHandler(async (req: AuthRequest, res: Response) 
       status,
       order_type,
     },
-    isVisibleToCustomer: true,
+    isVisibleToCustomer: false,
   });
 
   res.status(201).json({
