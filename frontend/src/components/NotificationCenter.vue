@@ -98,6 +98,15 @@
                 <User v-else />
               </el-icon>
               <span>{{ notification.title }}</span>
+              <el-tag
+                v-if="getNotificationStatus(notification)"
+                size="small"
+                :type="getNotificationStatus(notification)?.type === 'success' ? 'success' : 'info'"
+                effect="plain"
+                class="notification-status-tag"
+              >
+                {{ getNotificationStatus(notification)?.text }}
+              </el-tag>
             </div>
             <el-tag
               v-if="!notification.is_read"
@@ -264,6 +273,14 @@ const filterStatus = ref<'all' | 'unread' | 'read'>('all');
 const selectedNotifications = ref<number[]>([]);
 const selectAll = ref(false);
 const orderAssignmentCache = ref<Map<number, boolean>>(new Map());
+interface NotificationStatus {
+  text: string;
+  type: 'info' | 'success';
+}
+const notificationStatusMap = ref<Record<number, NotificationStatus>>({});
+const currentTransferNotificationId = ref<number | null>(null);
+const currentQuickActionNotificationId = ref<number | null>(null);
+const currentQuickActionType = ref<string | null>(null);
 const orderAssignmentStatus = computed(() => {
   const status: Record<number, boolean> = {};
   orderAssignmentCache.value.forEach((value, key) => {
@@ -314,6 +331,28 @@ watch(visible, (newVal) => {
   }
 });
 
+const setNotificationStatus = (id: number, status: NotificationStatus) => {
+  notificationStatusMap.value = {
+    ...notificationStatusMap.value,
+    [id]: status,
+  };
+};
+
+const getNotificationStatus = (notification: Notification) =>
+  notificationStatusMap.value[notification.id];
+
+const pruneNotificationStatuses = () => {
+  const ids = new Set(notificationsStore.notifications.map((n) => n.id));
+  const next: Record<number, NotificationStatus> = {};
+  Object.entries(notificationStatusMap.value).forEach(([key, status]) => {
+    const id = Number(key);
+    if (ids.has(id)) {
+      next[id] = status;
+    }
+  });
+  notificationStatusMap.value = next;
+};
+
 const loadNotifications = async () => {
   try {
     const isRead = filterStatus.value === 'all' 
@@ -343,6 +382,7 @@ const loadNotifications = async () => {
         Array.from(orderIds).map((orderId) => loadOrderAssignmentStatus(orderId))
       );
     }
+    pruneNotificationStatuses();
   } catch (error) {
     // 错误已在store中处理
   }
@@ -429,6 +469,8 @@ const handleQuickAction = async (notification: Notification) => {
       await handleMarkAsRead(notification.id);
     }
     quickActionOrderId.value = notification.related_id;
+    currentQuickActionNotificationId.value = notification.id;
+    currentQuickActionType.value = notification.type;
     quickActionVisible.value = true;
   }
 };
@@ -445,6 +487,17 @@ const handleQuickActionSuccess = () => {
   quickActionVisible.value = false;
   loadNotifications();
   notificationsStore.fetchUnreadCount();
+  if (
+    currentQuickActionNotificationId.value &&
+    currentQuickActionType.value === 'assignment'
+  ) {
+    setNotificationStatus(currentQuickActionNotificationId.value, {
+      text: '已跟进',
+      type: 'success',
+    });
+  }
+  currentQuickActionNotificationId.value = null;
+  currentQuickActionType.value = null;
 };
 
 // 删除通知
@@ -542,6 +595,7 @@ const loadOrderAssignmentStatus = async (orderId: number) => {
 
 // 处理转交催单
 const handleTransferReminder = async (notification: Notification) => {
+  currentTransferNotificationId.value = null;
   if (notification.related_type === 'order' && notification.related_id) {
     // 如果未读，先标记为已读
     if (!notification.is_read) {
@@ -610,22 +664,31 @@ const handleTransferReminder = async (notification: Notification) => {
       
       transferOrderId.value = notification.related_id;
       transferReminderId.value = assignedReminder.id;
+      currentTransferNotificationId.value = notification.id;
       transferDialogVisible.value = true;
     } catch (error: any) {
       console.error('加载催单信息失败:', error);
       const errorMessage = error.response?.data?.error || error.message || '加载催单信息失败';
       ElMessage.error(errorMessage);
+      currentTransferNotificationId.value = null;
     }
   }
 };
 
 // 转交成功回调
-const handleTransferSuccess = () => {
+const handleTransferSuccess = (payload?: { reminderId: number; orderId: number; targetName?: string }) => {
   transferDialogVisible.value = false;
   loadNotifications();
   notificationsStore.fetchUnreadCount();
   // 清除缓存，重新加载
   orderAssignmentCache.value.clear();
+  if (currentTransferNotificationId.value) {
+    setNotificationStatus(currentTransferNotificationId.value, {
+      text: payload?.targetName ? `已转交给 ${payload.targetName}` : '已转交',
+      type: 'info',
+    });
+  }
+  currentTransferNotificationId.value = null;
 };
 
 // 处理从订单编号反馈创建订单
@@ -742,6 +805,10 @@ const formatTime = (time: string) => {
   font-size: 14px;
   color: #303133;
   flex: 1;
+}
+
+.notification-status-tag {
+  margin-left: 4px;
 }
 
 .notification-icon {

@@ -41,7 +41,7 @@ export const createOrderFollowUp = async (
 
     // 获取订单信息
     const orderInfoResult = await pool.query(
-      `SELECT o.order_number, o.customer_id, u.company_name, u.contact_name
+      `SELECT o.order_number, o.customer_order_number, o.customer_id, u.company_name, u.contact_name
        FROM orders o
        LEFT JOIN users u ON o.customer_id = u.id
        WHERE o.id = $1`,

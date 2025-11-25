@@ -97,7 +97,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
-  success: [];
+  success: [payload?: { reminderId: number; orderId: number; targetName?: string }];
 }>();
 
 const authStore = useAuthStore();
@@ -199,11 +199,20 @@ const submitTransfer = async () => {
 
   submitting.value = true;
   try {
+    const targetPM = productionManagers.value.find(
+      (pm) => pm.id === transferForm.value.assigned_to
+    );
+    const targetName = targetPM?.admin_notes || targetPM?.username || '生产跟单';
+
     await remindersApi.transferReminder(props.reminderId, {
       assigned_to: transferForm.value.assigned_to!,
     });
     ElMessage.success('催单转交成功');
-    emit('success');
+    emit('success', {
+      reminderId: props.reminderId,
+      orderId: props.orderId || reminder.value?.order_id || 0,
+      targetName,
+    });
     handleClose();
   } catch (error: any) {
     const errorCode = error.response?.data?.code;
